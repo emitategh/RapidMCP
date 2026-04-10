@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from mcp_grpc.server import McpServer
@@ -78,3 +80,32 @@ async def test_call_unknown_tool():
 
     with pytest.raises(McpError, match="not found"):
         await server.handle_call_tool("nonexistent", "{}")
+
+
+def test_tool_context_excluded_from_schema():
+    """ToolContext parameter should not appear in input_schema."""
+    from mcp_grpc.server import ToolContext
+
+    server = McpServer(name="test", version="0.1")
+
+    @server.tool(description="Summarize with LLM")
+    async def summarize(text: str, ctx: ToolContext) -> str:
+        return text
+
+    tools = server.list_registered_tools()
+    assert len(tools) == 1
+    schema = json.loads(tools[0].input_schema)
+    assert "text" in schema["properties"]
+    assert "ctx" not in schema["properties"]
+    assert tools[0].needs_context is True
+
+
+def test_tool_without_context_has_no_needs_context():
+    server = McpServer(name="test", version="0.1")
+
+    @server.tool(description="Echo")
+    async def echo(text: str) -> str:
+        return text
+
+    tools = server.list_registered_tools()
+    assert tools[0].needs_context is False

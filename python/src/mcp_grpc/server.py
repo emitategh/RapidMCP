@@ -21,6 +21,7 @@ class RegisteredTool:
     description: str
     input_schema: str
     handler: Callable[..., Awaitable[Any]]
+    needs_context: bool = False
 
 
 @dataclass
@@ -131,6 +132,8 @@ def _build_input_schema(fn: Callable) -> str:
 
     for param_name, param in sig.parameters.items():
         annotation = param.annotation
+        if annotation is ToolContext:
+            continue  # skip DI parameters
         json_type = type_map.get(annotation, "string")
         properties[param_name] = {"type": json_type}
         if param.default is inspect.Parameter.empty:
@@ -386,11 +389,17 @@ class McpServer:
 
     def tool(self, description: str) -> Callable:
         def decorator(fn: Callable) -> Callable:
+            sig = inspect.signature(fn)
+            needs_ctx = any(
+                p.annotation is ToolContext
+                for p in sig.parameters.values()
+            )
             self._tools[fn.__name__] = RegisteredTool(
                 name=fn.__name__,
                 description=description,
                 input_schema=_build_input_schema(fn),
                 handler=fn,
+                needs_context=needs_ctx,
             )
             return fn
 
