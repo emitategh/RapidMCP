@@ -12,6 +12,7 @@ from grpc import aio as grpc_aio
 
 from mcp_grpc._generated import mcp_pb2, mcp_pb2_grpc
 from mcp_grpc.errors import McpError
+from mcp_grpc.session import PendingRequests
 
 
 @dataclass
@@ -54,6 +55,73 @@ class RegisteredCompletion:
     handler: Callable[..., Awaitable[list[str]]]
 
 
+class ToolContext:
+    """Provides sampling and elicitation to tool handlers via dependency injection."""
+
+    def __init__(
+        self,
+        client_capabilities: mcp_pb2.ClientCapabilities,
+        pending: PendingRequests,
+        write_queue: asyncio.Queue,
+    ) -> None:
+        self._capabilities = client_capabilities
+        self._pending = pending
+        self._write_queue = write_queue
+
+    async def sample(
+        self,
+        messages: list,
+        max_tokens: int,
+        system_prompt: str | None = None,
+    ) -> mcp_pb2.SamplingResponse:
+        """Request LLM completion from the client."""
+        if not self._capabilities.sampling:
+            raise McpError(400, "Client does not support sampling")
+        rid = self._pending.next_id()
+        future = self._pending.create(rid)
+        sampling_messages = []
+        for msg in messages:
+            if isinstance(msg, mcp_pb2.SamplingMessage):
+                sampling_messages.append(msg)
+            else:
+                sampling_messages.append(mcp_pb2.SamplingMessage(
+                    role=msg.get("role", "user"),
+                    content=mcp_pb2.ContentItem(
+                        type="text", text=msg.get("content", ""),
+                    ),
+                ))
+        envelope = mcp_pb2.ServerEnvelope(
+            request_id=rid,
+            sampling=mcp_pb2.SamplingRequest(
+                messages=sampling_messages,
+                system_prompt=system_prompt or "",
+                max_tokens=max_tokens,
+            ),
+        )
+        await self._write_queue.put(envelope)
+        return await asyncio.wait_for(future, timeout=30.0)
+
+    async def elicit(
+        self,
+        message: str,
+        schema: str | None = None,
+    ) -> mcp_pb2.ElicitationResponse:
+        """Request user input from the client."""
+        if not self._capabilities.elicitation:
+            raise McpError(400, "Client does not support elicitation")
+        rid = self._pending.next_id()
+        future = self._pending.create(rid)
+        envelope = mcp_pb2.ServerEnvelope(
+            request_id=rid,
+            elicitation=mcp_pb2.ElicitationRequest(
+                message=message,
+                schema=schema or "",
+            ),
+        )
+        await self._write_queue.put(envelope)
+        return await asyncio.wait_for(future, timeout=30.0)
+
+
 def _build_input_schema(fn: Callable) -> str:
     """Build a JSON Schema from function type hints."""
     sig = inspect.signature(fn)
@@ -82,6 +150,8 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
 
     async def Session(self, request_iterator, context):
         write_queue: asyncio.Queue[mcp_pb2.ServerEnvelope] = asyncio.Queue()
+        server_pending = PendingRequests()
+        client_capabilities = mcp_pb2.ClientCapabilities()
 
         async def _writer():
             while True:
@@ -96,6 +166,8 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                 msg_type = envelope.WhichOneof("message")
 
                 if msg_type == "initialize":
+                    nonlocal client_capabilities
+                    client_capabilities = envelope.initialize.capabilities
                     await write_queue.put(mcp_pb2.ServerEnvelope(
                         request_id=rid,
                         initialize=mcp_pb2.InitializeResponse(
@@ -245,6 +317,15 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                         request_id=rid,
                         pong=mcp_pb2.PingResponse(),
                     ))
+
+                elif msg_type == "sampling_reply":
+                    server_pending.resolve(rid, envelope.sampling_reply)
+
+                elif msg_type == "elicitation_reply":
+                    server_pending.resolve(rid, envelope.elicitation_reply)
+
+                elif msg_type == "roots_reply":
+                    server_pending.resolve(rid, envelope.roots_reply)
 
                 elif msg_type == "client_notification":
                     notif = envelope.client_notification
