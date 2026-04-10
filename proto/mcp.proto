@@ -1,0 +1,188 @@
+syntax = "proto3";
+package mcp;
+
+service Mcp {
+  rpc Session(stream ClientEnvelope) returns (stream ServerEnvelope);
+}
+
+message ClientEnvelope {
+  uint64 request_id = 1;
+
+  oneof message {
+    InitializeRequest      initialize        = 10;
+    InitializedAck         initialized       = 11;
+    ListToolsRequest       list_tools        = 20;
+    CallToolRequest        call_tool         = 21;
+    ListResourcesRequest   list_resources    = 30;
+    ReadResourceRequest    read_resource     = 31;
+    SubscribeResourceReq   subscribe_res     = 32;
+    ListPromptsRequest     list_prompts      = 40;
+    GetPromptRequest       get_prompt        = 41;
+    SamplingResponse       sampling_reply    = 50;
+    ElicitationResponse    elicitation_reply = 51;
+    ListRootsResponse      roots_reply       = 52;
+    PingRequest            ping              = 60;
+    CancelRequest          cancel            = 61;
+  }
+}
+
+message ServerEnvelope {
+  uint64 request_id = 1;
+
+  oneof message {
+    InitializeResponse     initialize        = 10;
+    ListToolsResponse      list_tools        = 20;
+    CallToolResponse       call_tool         = 21;
+    ListResourcesResponse  list_resources    = 30;
+    ReadResourceResponse   read_resource     = 31;
+    ListPromptsResponse    list_prompts      = 40;
+    GetPromptResponse      get_prompt        = 41;
+    SamplingRequest        sampling          = 50;
+    ElicitationRequest     elicitation       = 51;
+    ListRootsRequest       roots_request     = 52;
+    ServerNotification     notification      = 60;
+    PingResponse           pong              = 70;
+    ErrorResponse          error             = 71;
+  }
+}
+
+message InitializeRequest {
+  string client_name    = 1;
+  string client_version = 2;
+  ClientCapabilities capabilities = 3;
+}
+
+message InitializeResponse {
+  string server_name    = 1;
+  string server_version = 2;
+  ServerCapabilities capabilities = 3;
+}
+
+message InitializedAck {}
+
+message ClientCapabilities {
+  bool sampling    = 1;
+  bool elicitation = 2;
+  bool roots       = 3;
+}
+
+message ServerCapabilities {
+  bool tools              = 1;
+  bool tools_list_changed = 2;
+  bool resources          = 3;
+  bool prompts            = 4;
+}
+
+message ListToolsRequest {}
+message ListToolsResponse { repeated ToolDefinition tools = 1; }
+
+message ToolDefinition {
+  string name         = 1;
+  string description  = 2;
+  string input_schema = 3;
+}
+
+message CallToolRequest {
+  string name      = 1;
+  string arguments = 2;
+}
+
+message CallToolResponse {
+  repeated ContentItem content  = 1;
+  bool                 is_error = 2;
+}
+
+message ListResourcesRequest {}
+message ListResourcesResponse { repeated ResourceDefinition resources = 1; }
+
+message ResourceDefinition {
+  string uri         = 1;
+  string name        = 2;
+  string description = 3;
+  string mime_type   = 4;
+}
+
+message ReadResourceRequest  { string uri = 1; }
+message ReadResourceResponse { repeated ContentItem content = 1; }
+message SubscribeResourceReq { string uri = 1; }
+
+message ListPromptsRequest {}
+message ListPromptsResponse { repeated PromptDefinition prompts = 1; }
+
+message PromptDefinition {
+  string name        = 1;
+  string description = 2;
+  repeated PromptArgument arguments = 3;
+}
+
+message PromptArgument {
+  string name        = 1;
+  string description = 2;
+  bool   required    = 3;
+}
+
+message GetPromptRequest  {
+  string name = 1;
+  map<string, string> arguments = 2;
+}
+message GetPromptResponse { repeated PromptMessage messages = 1; }
+
+message PromptMessage {
+  string role         = 1;
+  ContentItem content = 2;
+}
+
+message SamplingRequest {
+  repeated SamplingMessage messages = 1;
+  string system_prompt = 2;
+  int32  max_tokens    = 3;
+}
+
+message SamplingMessage {
+  string role         = 1;
+  ContentItem content = 2;
+}
+
+message SamplingResponse {
+  string role        = 1;
+  ContentItem content = 2;
+  string model       = 3;
+  string stop_reason = 4;
+}
+
+message ElicitationRequest  { string message = 1; string schema = 2; }
+message ElicitationResponse { string action = 1; string content = 2; }
+
+message ListRootsRequest  {}
+message ListRootsResponse { repeated Root roots = 1; }
+message Root              { string uri = 1; string name = 2; }
+
+message ServerNotification {
+  enum Type {
+    TOOLS_LIST_CHANGED     = 0;
+    RESOURCES_LIST_CHANGED = 1;
+    RESOURCE_UPDATED       = 2;
+    PROMPTS_LIST_CHANGED   = 3;
+    PROGRESS               = 4;
+    LOG                    = 5;
+  }
+  Type   type    = 1;
+  string payload = 2;
+}
+
+message ContentItem {
+  string type      = 1;
+  string text      = 2;
+  bytes  data      = 3;
+  string mime_type = 4;
+  string uri       = 5;
+}
+
+message PingRequest  {}
+message PingResponse {}
+message CancelRequest { uint64 target_request_id = 1; }
+
+message ErrorResponse {
+  int32  code    = 1;
+  string message = 2;
+}

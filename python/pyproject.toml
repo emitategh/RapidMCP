@@ -1,0 +1,27 @@
+[project]
+name = "mcp-grpc"
+version = "0.1.0"
+description = "gRPC-native tool-calling protocol inspired by MCP"
+requires-python = ">=3.10"
+dependencies = [
+    "grpcio>=1.57.0",
+    "protobuf>=4.24.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "grpcio-tools>=1.57.0",
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
