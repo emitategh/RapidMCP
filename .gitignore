@@ -5,6 +5,8 @@ dist/
 .venv/
 python/src/mcp_grpc/_generated/
 
+# uv.lock is intentionally committed — do NOT add it here
+
 # TypeScript (for future plan)
 node_modules/
 typescript/src/generated/

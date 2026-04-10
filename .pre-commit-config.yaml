@@ -5,3 +5,7 @@ repos:
       - id: ruff
         args: [--fix]
       - id: ruff-format
+
+# ty is NOT in pre-commit — it runs non-blocking (warn-only) in CI.
+# To check manually: uv run ty check
+# To graduate to blocking when ty stabilizes: add exit-zero: false to CI step.
