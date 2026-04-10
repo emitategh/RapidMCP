@@ -39,6 +39,18 @@ class McpClient:
         self._stream: Any = None
         self._reader_task: asyncio.Task | None = None
         self.server_info: ServerInfo | None = None
+        self._sampling_handler = None
+        self._elicitation_handler = None
+        self._roots_handler = None
+
+    def set_sampling_handler(self, handler) -> None:
+        self._sampling_handler = handler
+
+    def set_elicitation_handler(self, handler) -> None:
+        self._elicitation_handler = handler
+
+    def set_roots_handler(self, handler) -> None:
+        self._roots_handler = handler
 
     async def connect(self) -> None:
         self._channel = grpc_aio.insecure_channel(self._target)
@@ -78,18 +90,47 @@ class McpClient:
                     asyncio.create_task(
                         self._notifications.dispatch(type_name, notif.payload)
                     )
+                elif msg_type in ("sampling", "elicitation", "roots_request"):
+                    asyncio.create_task(self._handle_server_request(envelope))
                 else:
                     inner = getattr(envelope, msg_type)
                     self._pending.resolve(rid, inner)
         except grpc.RpcError:
             self._pending.cancel_all()
 
+    async def _handle_server_request(self, envelope: mcp_pb2.ServerEnvelope) -> None:
+        rid = envelope.request_id
+        msg_type = envelope.WhichOneof("message")
+
+        try:
+            if msg_type == "sampling" and self._sampling_handler:
+                result = await self._sampling_handler(envelope.sampling)
+                await self._send(mcp_pb2.ClientEnvelope(
+                    request_id=rid, sampling_reply=result,
+                ))
+            elif msg_type == "elicitation" and self._elicitation_handler:
+                result = await self._elicitation_handler(envelope.elicitation)
+                await self._send(mcp_pb2.ClientEnvelope(
+                    request_id=rid, elicitation_reply=result,
+                ))
+            elif msg_type == "roots_request" and self._roots_handler:
+                result = await self._roots_handler()
+                await self._send(mcp_pb2.ClientEnvelope(
+                    request_id=rid, roots_reply=result,
+                ))
+        except Exception:
+            pass  # handler errors silently dropped for now
+
     async def _initialize(self) -> None:
         env = mcp_pb2.ClientEnvelope(
             initialize=mcp_pb2.InitializeRequest(
                 client_name="mcp-grpc-python",
                 client_version="0.1.0",
-                capabilities=mcp_pb2.ClientCapabilities(),
+                capabilities=mcp_pb2.ClientCapabilities(
+                    sampling=self._sampling_handler is not None,
+                    elicitation=self._elicitation_handler is not None,
+                    roots=self._roots_handler is not None,
+                ),
             ),
         )
         resp = await self._request(env)
