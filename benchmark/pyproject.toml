@@ -1,0 +1,16 @@
+[project]
+name = "mcp-grpc-benchmark"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "fastmcp>=2.0",
+    "mcp>=1.0",
+    "mcp-grpc",
+]
+
+[tool.uv.sources]
+mcp-grpc = { path = "../python" }
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
