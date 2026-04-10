@@ -114,5 +114,13 @@ class _InProcessClient:
             )
         )
 
+    async def list_resource_templates(self) -> list[mcp_pb2.ResourceTemplateDefinition]:
+        resp = await self._roundtrip(
+            mcp_pb2.ClientEnvelope(
+                list_resource_templates=mcp_pb2.ListResourceTemplatesRequest()
+            )
+        )
+        return list(resp.templates)
+
     async def ping(self) -> None:
         await self._roundtrip(mcp_pb2.ClientEnvelope(ping=mcp_pb2.PingRequest()))

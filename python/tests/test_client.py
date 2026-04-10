@@ -66,6 +66,23 @@ async def test_ping(echo_server):
 
 
 @pytest.mark.asyncio
+async def test_list_resource_templates():
+    server = McpServer(name="test-server", version="0.1")
+
+    @server.resource_template(
+        uri_template="file:///{path}",
+        description="Read a file",
+    )
+    async def read_file(path: str) -> str:
+        return f"contents of {path}"
+
+    async with InProcessChannel(server) as client:
+        templates = await client.list_resource_templates()
+        assert len(templates) == 1
+        assert templates[0].uri_template == "file:///{path}"
+
+
+@pytest.mark.asyncio
 async def test_initialize(echo_server):
     async with InProcessChannel(echo_server) as client:
         info = client.server_info

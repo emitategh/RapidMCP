@@ -39,6 +39,15 @@ class RegisteredPrompt:
     handler: Callable[..., Awaitable[Any]]
 
 
+@dataclass
+class RegisteredResourceTemplate:
+    uri_template: str
+    name: str
+    description: str
+    mime_type: str
+    handler: Callable[..., Awaitable[Any]]
+
+
 def _build_input_schema(fn: Callable) -> str:
     """Build a JSON Schema from function type hints."""
     sig = inspect.signature(fn)
@@ -156,6 +165,23 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                             ),
                         ))
 
+                elif msg_type == "list_resource_templates":
+                    templates = [
+                        mcp_pb2.ResourceTemplateDefinition(
+                            uri_template=t.uri_template,
+                            name=t.name,
+                            description=t.description,
+                            mime_type=t.mime_type,
+                        )
+                        for t in self._server._resource_templates.values()
+                    ]
+                    await write_queue.put(mcp_pb2.ServerEnvelope(
+                        request_id=rid,
+                        list_resource_templates=mcp_pb2.ListResourceTemplatesResponse(
+                            templates=templates,
+                        ),
+                    ))
+
                 elif msg_type == "list_prompts":
                     prompts = [
                         mcp_pb2.PromptDefinition(
@@ -230,6 +256,7 @@ class McpServer:
         self._tools: dict[str, RegisteredTool] = {}
         self._resources: dict[str, RegisteredResource] = {}
         self._prompts: dict[str, RegisteredPrompt] = {}
+        self._resource_templates: dict[str, RegisteredResourceTemplate] = {}
 
     def tool(self, description: str) -> Callable:
         def decorator(fn: Callable) -> Callable:
@@ -277,6 +304,20 @@ class McpServer:
 
         return decorator
 
+    def resource_template(
+        self, uri_template: str, description: str, mime_type: str = "text/plain",
+    ) -> Callable:
+        def decorator(fn: Callable) -> Callable:
+            self._resource_templates[uri_template] = RegisteredResourceTemplate(
+                uri_template=uri_template,
+                name=fn.__name__,
+                description=description,
+                mime_type=mime_type,
+                handler=fn,
+            )
+            return fn
+        return decorator
+
     def list_registered_tools(self) -> list[RegisteredTool]:
         return list(self._tools.values())
 
@@ -285,6 +326,9 @@ class McpServer:
 
     def list_registered_prompts(self) -> list[RegisteredPrompt]:
         return list(self._prompts.values())
+
+    def list_registered_resource_templates(self) -> list[RegisteredResourceTemplate]:
+        return list(self._resource_templates.values())
 
     async def handle_call_tool(self, name: str, arguments_json: str) -> mcp_pb2.CallToolResponse:
         tool = self._tools.get(name)

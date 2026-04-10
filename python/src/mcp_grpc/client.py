@@ -133,6 +133,16 @@ class McpClient:
         )
         return await self._request(env)
 
+    async def list_resource_templates(
+        self, cursor: str | None = None
+    ) -> mcp_pb2.ListResourceTemplatesResponse:
+        env = mcp_pb2.ClientEnvelope(
+            list_resource_templates=mcp_pb2.ListResourceTemplatesRequest(
+                cursor=cursor or "",
+            )
+        )
+        return await self._request(env)
+
     async def ping(self) -> None:
         env = mcp_pb2.ClientEnvelope(ping=mcp_pb2.PingRequest())
         await self._request(env)

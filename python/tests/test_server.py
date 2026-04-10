@@ -41,6 +41,22 @@ def test_register_prompt():
     assert prompts[0].name == "greet"
 
 
+def test_register_resource_template():
+    server = McpServer(name="test", version="0.1")
+
+    @server.resource_template(
+        uri_template="file:///{path}",
+        description="Read a file",
+    )
+    async def read_file(path: str) -> str:
+        return f"contents of {path}"
+
+    templates = server.list_registered_resource_templates()
+    assert len(templates) == 1
+    assert templates[0].uri_template == "file:///{path}"
+    assert templates[0].description == "Read a file"
+
+
 @pytest.mark.asyncio
 async def test_call_tool_handler():
     server = McpServer(name="test", version="0.1")
