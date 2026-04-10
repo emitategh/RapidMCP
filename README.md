@@ -1,16 +1,16 @@
-# mcp-grpc
+# FasterMCP
 
-A **gRPC-native** implementation of the [MCP](https://modelcontextprotocol.io/) (Model Context Protocol) capability model — tools, resources, prompts, and client primitives — using protobuf over bidirectional gRPC streams instead of MCP's official JSON-RPC transports.
+**MCP over native gRPC.** 17x lower latency than Streamable HTTP.
 
-## Why gRPC instead of MCP transports?
+FasterMCP is a gRPC-native transport for the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP). Instead of JSON-RPC over HTTP, it uses protobuf messages over a persistent bidirectional gRPC stream — the same MCP semantics (tools, resources, prompts), a fundamentally faster wire format.
 
-| Concern | MCP stdio/HTTP | mcp-grpc |
+| | MCP (stdio / Streamable HTTP) | FasterMCP (gRPC) |
 |---|---|---|
-| Bidirectional | SSE + POST | Native bidi streaming |
-| Type safety | JSON-RPC (stringly typed) | Protobuf (fully typed) |
+| Wire format | JSON-RPC over text | Protobuf binary |
+| Connection model | HTTP request per call | Persistent bidi stream |
+| Type safety | Stringly typed | Fully typed `.proto` |
 | Multi-language | Per-SDK JSON-RPC layer | Single `.proto`, generated stubs |
-| Performance | HTTP overhead, JSON encoding | Binary, multiplexed |
-| Latency | ~9ms per call | ~0.5ms per call (**~17x faster**) |
+| Latency | ~9ms per call | ~0.5ms per call |
 
 ## Quick start
 
@@ -65,9 +65,9 @@ uv run pytest tests/ -v
 
 23 tests covering: client operations, server registration, session management, and full gRPC integration over loopback.
 
-## Benchmark: mcp-grpc vs FastMCP (Streamable HTTP)
+## Benchmark: FasterMCP vs FastMCP (Streamable HTTP)
 
-A latency benchmark comparing mcp-grpc against [FastMCP](https://gofastmcp.com/) over Streamable HTTP. Both servers run the same `echo` tool — the difference is purely transport overhead.
+A latency benchmark comparing FasterMCP (gRPC) against [FastMCP](https://gofastmcp.com/) (Streamable HTTP). Both servers run the same `echo` tool — the difference is purely transport overhead.
 
 ### Run it
 
@@ -88,16 +88,16 @@ Options:
 ```
 Transport             p50      p95      p99      min      max     mean    stdev
 -------------------------------------------------------------------------------
-mcp-grpc            0.55ms    0.70ms    0.81ms    0.42ms    1.18ms    0.58ms    0.09ms
-FastMCP HTTP        9.68ms   14.06ms   18.22ms    7.59ms   35.72ms   10.40ms    3.20ms
+FasterMCP (gRPC)    0.55ms    0.70ms    0.81ms    0.42ms    1.18ms    0.58ms    0.09ms
+FastMCP (HTTP)      9.68ms   14.06ms   18.22ms    7.59ms   35.72ms   10.40ms    3.20ms
 ```
 
-**mcp-grpc is ~17x faster at p50 and ~22x faster at p99.** The gRPC binary transport over a persistent bidi stream eliminates HTTP connection overhead and JSON encoding on every call.
+**FasterMCP is ~17x faster at p50 and ~22x faster at p99.** The gRPC binary transport over a persistent bidi stream eliminates HTTP connection overhead and JSON encoding on every call.
 
 ## Project structure
 
 ```
-mcp-grpc/
+FasterMCP/
 ├── proto/mcp.proto              ← Protocol definition (single source of truth)
 ├── python/
 │   ├── src/mcp_grpc/
@@ -109,7 +109,7 @@ mcp-grpc/
 │   └── tests/                   ← 23 tests (unit + integration)
 ├── benchmark/
 │   ├── run_benchmark.py         ← Latency harness
-│   ├── grpc_server.py           ← mcp-grpc echo server
+│   ├── grpc_server.py           ← FasterMCP echo server (gRPC)
 │   └── fastmcp_server.py        ← FastMCP echo server (Streamable HTTP)
 └── docs/superpowers/
     ├── specs/                   ← Design specs
