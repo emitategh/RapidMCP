@@ -16,13 +16,16 @@ message ClientEnvelope {
     ListResourcesRequest   list_resources    = 30;
     ReadResourceRequest    read_resource     = 31;
     SubscribeResourceReq   subscribe_res     = 32;
+    ListResourceTemplatesRequest list_resource_templates = 33;
     ListPromptsRequest     list_prompts      = 40;
     GetPromptRequest       get_prompt        = 41;
+    CompleteRequest        complete          = 42;
     SamplingResponse       sampling_reply    = 50;
     ElicitationResponse    elicitation_reply = 51;
     ListRootsResponse      roots_reply       = 52;
     PingRequest            ping              = 60;
     CancelRequest          cancel            = 61;
+    ClientNotification     client_notification = 62;
   }
 }
 
@@ -35,8 +38,10 @@ message ServerEnvelope {
     CallToolResponse       call_tool         = 21;
     ListResourcesResponse  list_resources    = 30;
     ReadResourceResponse   read_resource     = 31;
+    ListResourceTemplatesResponse list_resource_templates = 32;
     ListPromptsResponse    list_prompts      = 40;
     GetPromptResponse      get_prompt        = 41;
+    CompleteResponse       complete          = 42;
     SamplingRequest        sampling          = 50;
     ElicitationRequest     elicitation       = 51;
     ListRootsRequest       roots_request     = 52;
@@ -73,8 +78,12 @@ message ServerCapabilities {
   bool prompts            = 4;
 }
 
-message ListToolsRequest {}
-message ListToolsResponse { repeated ToolDefinition tools = 1; }
+message ListToolsRequest { string cursor = 1; }
+
+message ListToolsResponse {
+  repeated ToolDefinition tools = 1;
+  string next_cursor = 2;
+}
 
 message ToolDefinition {
   string name         = 1;
@@ -92,8 +101,12 @@ message CallToolResponse {
   bool                 is_error = 2;
 }
 
-message ListResourcesRequest {}
-message ListResourcesResponse { repeated ResourceDefinition resources = 1; }
+message ListResourcesRequest { string cursor = 1; }
+
+message ListResourcesResponse {
+  repeated ResourceDefinition resources = 1;
+  string next_cursor = 2;
+}
 
 message ResourceDefinition {
   string uri         = 1;
@@ -106,8 +119,26 @@ message ReadResourceRequest  { string uri = 1; }
 message ReadResourceResponse { repeated ContentItem content = 1; }
 message SubscribeResourceReq { string uri = 1; }
 
-message ListPromptsRequest {}
-message ListPromptsResponse { repeated PromptDefinition prompts = 1; }
+message ListResourceTemplatesRequest { string cursor = 1; }
+
+message ListResourceTemplatesResponse {
+  repeated ResourceTemplateDefinition templates = 1;
+  string next_cursor = 2;
+}
+
+message ResourceTemplateDefinition {
+  string uri_template = 1;
+  string name         = 2;
+  string description  = 3;
+  string mime_type    = 4;
+}
+
+message ListPromptsRequest { string cursor = 1; }
+
+message ListPromptsResponse {
+  repeated PromptDefinition prompts = 1;
+  string next_cursor = 2;
+}
 
 message PromptDefinition {
   string name        = 1;
@@ -130,6 +161,27 @@ message GetPromptResponse { repeated PromptMessage messages = 1; }
 message PromptMessage {
   string role         = 1;
   ContentItem content = 2;
+}
+
+message CompleteRequest {
+  CompletionRef ref      = 1;
+  CompletionArg argument = 2;
+}
+
+message CompletionRef {
+  string type = 1;
+  string name = 2;
+}
+
+message CompletionArg {
+  string name  = 1;
+  string value = 2;
+}
+
+message CompleteResponse {
+  repeated string values = 1;
+  bool has_more          = 2;
+  int32 total            = 3;
 }
 
 message SamplingRequest {
@@ -170,6 +222,14 @@ message ServerNotification {
   string payload = 2;
 }
 
+message ClientNotification {
+  enum Type {
+    ROOTS_LIST_CHANGED = 0;
+  }
+  Type   type    = 1;
+  string payload = 2;
+}
+
 message ContentItem {
   string type      = 1;
   string text      = 2;
@@ -180,6 +240,7 @@ message ContentItem {
 
 message PingRequest  {}
 message PingResponse {}
+
 message CancelRequest { uint64 target_request_id = 1; }
 
 message ErrorResponse {
