@@ -26,8 +26,8 @@ async def echo_server():
 @pytest.mark.asyncio
 async def test_grpc_list_tools(echo_server):
     async with McpClient(f"localhost:{echo_server.port}") as client:
-        tools = await client.list_tools()
-        names = {t.name for t in tools}
+        result = await client.list_tools()
+        names = {t.name for t in result.items}
         assert names == {"echo", "reverse"}
 
 
@@ -55,9 +55,9 @@ async def test_grpc_ping(echo_server):
 @pytest.mark.asyncio
 async def test_grpc_list_resources(echo_server):
     async with McpClient(f"localhost:{echo_server.port}") as client:
-        resources = await client.list_resources()
-        assert len(resources) == 1
-        assert resources[0].uri == "res://greeting"
+        result = await client.list_resources()
+        assert len(result.items) == 1
+        assert result.items[0].uri == "res://greeting"
 
 
 @pytest.mark.asyncio

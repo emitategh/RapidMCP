@@ -5,7 +5,7 @@ import json
 from typing import Any
 
 from mcp_grpc._generated import mcp_pb2
-from mcp_grpc.client import ServerInfo
+from mcp_grpc.client import ListResult, ServerInfo
 from mcp_grpc.errors import McpError
 from mcp_grpc.server import McpServer, _McpServicer
 from mcp_grpc.session import PendingRequests
@@ -68,11 +68,11 @@ class _InProcessClient:
             capabilities=resp.capabilities,
         )
 
-    async def list_tools(self) -> list[mcp_pb2.ToolDefinition]:
+    async def list_tools(self) -> ListResult:
         resp = await self._roundtrip(
             mcp_pb2.ClientEnvelope(list_tools=mcp_pb2.ListToolsRequest())
         )
-        return list(resp.tools)
+        return ListResult(items=list(resp.tools), next_cursor=resp.next_cursor or None)
 
     async def call_tool(
         self, name: str, arguments: dict | None = None
@@ -86,11 +86,11 @@ class _InProcessClient:
             )
         )
 
-    async def list_resources(self) -> list[mcp_pb2.ResourceDefinition]:
+    async def list_resources(self) -> ListResult:
         resp = await self._roundtrip(
             mcp_pb2.ClientEnvelope(list_resources=mcp_pb2.ListResourcesRequest())
         )
-        return list(resp.resources)
+        return ListResult(items=list(resp.resources), next_cursor=resp.next_cursor or None)
 
     async def read_resource(self, uri: str) -> mcp_pb2.ReadResourceResponse:
         return await self._roundtrip(
@@ -99,11 +99,11 @@ class _InProcessClient:
             )
         )
 
-    async def list_prompts(self) -> list[mcp_pb2.PromptDefinition]:
+    async def list_prompts(self) -> ListResult:
         resp = await self._roundtrip(
             mcp_pb2.ClientEnvelope(list_prompts=mcp_pb2.ListPromptsRequest())
         )
-        return list(resp.prompts)
+        return ListResult(items=list(resp.prompts), next_cursor=resp.next_cursor or None)
 
     async def get_prompt(
         self, name: str, arguments: dict[str, str] | None = None
@@ -114,13 +114,13 @@ class _InProcessClient:
             )
         )
 
-    async def list_resource_templates(self) -> list[mcp_pb2.ResourceTemplateDefinition]:
+    async def list_resource_templates(self) -> ListResult:
         resp = await self._roundtrip(
             mcp_pb2.ClientEnvelope(
                 list_resource_templates=mcp_pb2.ListResourceTemplatesRequest()
             )
         )
-        return list(resp.templates)
+        return ListResult(items=list(resp.templates), next_cursor=resp.next_cursor or None)
 
     async def complete(
         self, ref_type: str, ref_name: str, argument_name: str, value: str,

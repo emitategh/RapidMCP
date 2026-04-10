@@ -15,6 +15,13 @@ from mcp_grpc.session import PendingRequests
 
 
 @dataclass
+class ListResult:
+    """Result from a paginated list method."""
+    items: list
+    next_cursor: str | None
+
+
+@dataclass
 class ServerInfo:
     server_name: str
     server_version: str
@@ -93,10 +100,15 @@ class McpClient:
             )
         )
 
-    async def list_tools(self) -> list[mcp_pb2.ToolDefinition]:
-        env = mcp_pb2.ClientEnvelope(list_tools=mcp_pb2.ListToolsRequest())
+    async def list_tools(self, cursor: str | None = None) -> ListResult:
+        env = mcp_pb2.ClientEnvelope(
+            list_tools=mcp_pb2.ListToolsRequest(cursor=cursor or "")
+        )
         resp = await self._request(env)
-        return list(resp.tools)
+        return ListResult(
+            items=list(resp.tools),
+            next_cursor=resp.next_cursor or None,
+        )
 
     async def call_tool(
         self, name: str, arguments: dict | None = None
@@ -109,10 +121,15 @@ class McpClient:
         )
         return await self._request(env)
 
-    async def list_resources(self) -> list[mcp_pb2.ResourceDefinition]:
-        env = mcp_pb2.ClientEnvelope(list_resources=mcp_pb2.ListResourcesRequest())
+    async def list_resources(self, cursor: str | None = None) -> ListResult:
+        env = mcp_pb2.ClientEnvelope(
+            list_resources=mcp_pb2.ListResourcesRequest(cursor=cursor or "")
+        )
         resp = await self._request(env)
-        return list(resp.resources)
+        return ListResult(
+            items=list(resp.resources),
+            next_cursor=resp.next_cursor or None,
+        )
 
     async def read_resource(self, uri: str) -> mcp_pb2.ReadResourceResponse:
         env = mcp_pb2.ClientEnvelope(
@@ -120,10 +137,15 @@ class McpClient:
         )
         return await self._request(env)
 
-    async def list_prompts(self) -> list[mcp_pb2.PromptDefinition]:
-        env = mcp_pb2.ClientEnvelope(list_prompts=mcp_pb2.ListPromptsRequest())
+    async def list_prompts(self, cursor: str | None = None) -> ListResult:
+        env = mcp_pb2.ClientEnvelope(
+            list_prompts=mcp_pb2.ListPromptsRequest(cursor=cursor or "")
+        )
         resp = await self._request(env)
-        return list(resp.prompts)
+        return ListResult(
+            items=list(resp.prompts),
+            next_cursor=resp.next_cursor or None,
+        )
 
     async def get_prompt(
         self, name: str, arguments: dict[str, str] | None = None
@@ -133,15 +155,17 @@ class McpClient:
         )
         return await self._request(env)
 
-    async def list_resource_templates(
-        self, cursor: str | None = None
-    ) -> mcp_pb2.ListResourceTemplatesResponse:
+    async def list_resource_templates(self, cursor: str | None = None) -> ListResult:
         env = mcp_pb2.ClientEnvelope(
             list_resource_templates=mcp_pb2.ListResourceTemplatesRequest(
                 cursor=cursor or "",
             )
         )
-        return await self._request(env)
+        resp = await self._request(env)
+        return ListResult(
+            items=list(resp.templates),
+            next_cursor=resp.next_cursor or None,
+        )
 
     async def complete(
         self, ref_type: str, ref_name: str, argument_name: str, value: str,

@@ -1,5 +1,6 @@
 import pytest
 
+from mcp_grpc.client import ListResult
 from mcp_grpc.server import McpServer
 from mcp_grpc.testing import InProcessChannel
 
@@ -22,9 +23,9 @@ def echo_server():
 @pytest.mark.asyncio
 async def test_list_tools(echo_server):
     async with InProcessChannel(echo_server) as client:
-        tools = await client.list_tools()
-        assert len(tools) == 1
-        assert tools[0].name == "echo"
+        result = await client.list_tools()
+        assert len(result.items) == 1
+        assert result.items[0].name == "echo"
 
 
 @pytest.mark.asyncio
@@ -47,9 +48,9 @@ async def test_call_unknown_tool(echo_server):
 @pytest.mark.asyncio
 async def test_list_resources(echo_server):
     async with InProcessChannel(echo_server) as client:
-        resources = await client.list_resources()
-        assert len(resources) == 1
-        assert resources[0].uri == "res://greeting"
+        result = await client.list_resources()
+        assert len(result.items) == 1
+        assert result.items[0].uri == "res://greeting"
 
 
 @pytest.mark.asyncio
@@ -77,9 +78,9 @@ async def test_list_resource_templates():
         return f"contents of {path}"
 
     async with InProcessChannel(server) as client:
-        templates = await client.list_resource_templates()
-        assert len(templates) == 1
-        assert templates[0].uri_template == "file:///{path}"
+        result = await client.list_resource_templates()
+        assert len(result.items) == 1
+        assert result.items[0].uri_template == "file:///{path}"
 
 
 @pytest.mark.asyncio
@@ -88,6 +89,22 @@ async def test_initialize(echo_server):
         info = client.server_info
         assert info.server_name == "test-server"
         assert info.capabilities.tools is True
+
+
+@pytest.mark.asyncio
+async def test_list_tools_returns_list_result():
+    server = McpServer(name="test-server", version="0.1")
+
+    @server.tool(description="Echo")
+    async def echo(text: str) -> str:
+        return text
+
+    async with InProcessChannel(server) as client:
+        result = await client.list_tools()
+        assert isinstance(result, ListResult)
+        assert len(result.items) == 1
+        assert result.items[0].name == "echo"
+        assert result.next_cursor is None or result.next_cursor == ""
 
 
 @pytest.mark.asyncio
