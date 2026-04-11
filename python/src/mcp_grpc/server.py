@@ -6,49 +6,22 @@ import asyncio
 import inspect
 import json
 import logging
-import typing
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
-from functools import partial
 from typing import Any
 
 from grpc import aio as grpc_aio
 
 from mcp_grpc._generated import mcp_pb2, mcp_pb2_grpc
-from mcp_grpc._utils import _paginate, _prefix_resource_uri, _to_content_items
+from mcp_grpc._utils import _paginate, _prefix_resource_uri
 from mcp_grpc.content import Audio, Image
 from mcp_grpc.context import Context
 from mcp_grpc.errors import McpError
-from mcp_grpc.middleware import Middleware, ToolCallContext
+from mcp_grpc.middleware import Middleware
 from mcp_grpc.session import PendingRequests
+from mcp_grpc.tools import RegisteredTool, ToolAnnotations, ToolManager
 
 logger = logging.getLogger("mcp_grpc.server")
-
-
-@dataclass
-class ToolAnnotations:
-    """Behavioural hints for a tool, surfaced to MCP clients.
-
-    All fields are optional. Clients use these to decide how to present or
-    invoke the tool (e.g. warn the user before calling a destructive tool).
-    """
-
-    title: str = ""
-    read_only_hint: bool = False
-    destructive_hint: bool = False
-    idempotent_hint: bool = False
-    open_world_hint: bool = False
-
-
-@dataclass
-class RegisteredTool:
-    name: str
-    description: str
-    input_schema: str
-    handler: Callable[..., Awaitable[Any]]
-    needs_context: bool = False
-    output_schema: str = ""  # JSON schema string; empty = no structured output
-    annotations: ToolAnnotations | None = None
 
 
 @dataclass
@@ -81,52 +54,6 @@ class RegisteredResourceTemplate:
 class RegisteredCompletion:
     ref_name: str
     handler: Callable[..., Awaitable[list[str]]]
-
-
-def _resolve_hints(fn: Callable) -> dict[str, Any]:
-    """Resolve type hints for *fn*, handling ``from __future__ import annotations``.
-
-    Returns the mapping from ``typing.get_type_hints`` when possible.
-    Falls back to raw ``inspect.signature`` annotations so that
-    un-importable forward references don't crash registration.
-    """
-    try:
-        return typing.get_type_hints(fn)
-    except Exception:
-        return {
-            name: p.annotation
-            for name, p in inspect.signature(fn).parameters.items()
-            if p.annotation is not inspect.Parameter.empty
-        }
-
-
-def _needs_context(fn: Callable) -> bool:
-    """Return True if *fn* declares a ``ctx: Context`` parameter."""
-    hints = _resolve_hints(fn)
-    return any(v is Context for v in hints.values())
-
-
-def _build_input_schema(fn: Callable) -> str:
-    """Build a JSON Schema from function type hints."""
-    hints = _resolve_hints(fn)
-    sig = inspect.signature(fn)
-    properties: dict[str, Any] = {}
-    required: list[str] = []
-    type_map = {str: "string", int: "integer", float: "number", bool: "boolean"}
-
-    for param_name, param in sig.parameters.items():
-        annotation = hints.get(param_name, param.annotation)
-        if annotation is Context:
-            continue  # skip DI parameters
-        json_type = type_map.get(annotation, "string")
-        properties[param_name] = {"type": json_type}
-        if param.default is inspect.Parameter.empty:
-            required.append(param_name)
-
-    schema: dict[str, Any] = {"type": "object", "properties": properties}
-    if required:
-        schema["required"] = required
-    return json.dumps(schema)
 
 
 class _McpServicer(mcp_pb2_grpc.McpServicer):
@@ -526,7 +453,7 @@ class FasterMCP:
         self.name = name
         self.version = version
         self.page_size = page_size
-        self._tools: dict[str, RegisteredTool] = {}
+        self._tool_manager = ToolManager(middleware=middleware)
         self._resources: dict[str, RegisteredResource] = {}
         self._prompts: dict[str, RegisteredPrompt] = {}
         self._resource_templates: dict[str, RegisteredResourceTemplate] = {}
@@ -534,7 +461,10 @@ class FasterMCP:
         self._session_queues: list[asyncio.Queue] = []
         self._client_notification_handlers: dict[str, list[Callable]] = {}
         self._subscribe_handlers: list[Callable] = []
-        self._middleware: list[Middleware] = list(middleware or [])
+
+    @property
+    def _tools(self) -> dict[str, RegisteredTool]:
+        return self._tool_manager._tools
 
     def tool(
         self,
@@ -547,47 +477,15 @@ class FasterMCP:
         open_world: bool = False,
         title: str = "",
     ) -> Callable[[Callable], Callable]:
-        """Register a tool on this server.
-
-        Args:
-            description: Human-readable description. Falls back to the
-                function's docstring if omitted.
-            output_schema: JSON Schema dict describing the tool's structured
-                output. When provided, the schema is serialised and sent to
-                clients in ``ToolDefinition.output_schema``.
-            read_only: Hint that this tool does not modify state.
-            destructive: Hint that this tool may perform destructive changes.
-            idempotent: Hint that repeated calls produce the same result.
-            open_world: Hint that this tool interacts with the external world.
-            title: Short human-readable title for the tool.
-        """
-
-        def decorator(fn: Callable) -> Callable:
-            desc = description or (fn.__doc__ or "").strip()
-            needs_ctx = _needs_context(fn)
-
-            ann: ToolAnnotations | None = None
-            if any((read_only, destructive, idempotent, open_world, title)):
-                ann = ToolAnnotations(
-                    title=title,
-                    read_only_hint=read_only,
-                    destructive_hint=destructive,
-                    idempotent_hint=idempotent,
-                    open_world_hint=open_world,
-                )
-
-            self._tools[fn.__name__] = RegisteredTool(
-                name=fn.__name__,
-                description=desc,
-                input_schema=_build_input_schema(fn),
-                handler=fn,
-                needs_context=needs_ctx,
-                output_schema=json.dumps(output_schema) if output_schema else "",
-                annotations=ann,
-            )
-            return fn
-
-        return decorator
+        return self._tool_manager.tool(
+            description=description,
+            output_schema=output_schema,
+            read_only=read_only,
+            destructive=destructive,
+            idempotent=idempotent,
+            open_world=open_world,
+            title=title,
+        )
 
     def resource(
         self,
@@ -662,7 +560,7 @@ class FasterMCP:
         return decorator
 
     def list_registered_tools(self) -> list[RegisteredTool]:
-        return list(self._tools.values())
+        return self._tool_manager.list_registered_tools()
 
     def list_registered_resources(self) -> list[RegisteredResource]:
         return list(self._resources.values())
@@ -675,7 +573,7 @@ class FasterMCP:
 
     def add_middleware(self, middleware: Middleware) -> None:
         """Append a middleware to the chain (outermost if added last)."""
-        self._middleware.append(middleware)
+        self._tool_manager.add_middleware(middleware)
 
     def mount(self, sub: FasterMCP, *, prefix: str) -> None:
         """Merge all registries from *sub* into this server under *prefix*.
@@ -736,32 +634,7 @@ class FasterMCP:
         arguments: dict,
         ctx: Context | None,
     ) -> mcp_pb2.CallToolResponse:
-        """Run a tool call through the full middleware chain.
-
-        Chain is built in reversed registration order so the first-registered
-        middleware is the outermost wrapper (runs first on entry, last on exit).
-        functools.partial captures each call_next by value at construction time,
-        avoiding the classic loop-closure bug.
-        """
-        registered = self._tools.get(name)
-        schema_dict: dict | None = None
-        if registered:
-            try:
-                schema_dict = json.loads(registered.input_schema)
-            except (ValueError, TypeError):
-                pass
-        tool_ctx = ToolCallContext(
-            tool_name=name, arguments=arguments, ctx=ctx, input_schema=schema_dict
-        )
-
-        async def base(tc: ToolCallContext) -> mcp_pb2.CallToolResponse:
-            return await self._call_tool_with_dict(tc.tool_name, tc.arguments, tc.ctx)
-
-        chain = base
-        for mw in reversed(self._middleware):
-            chain = partial(mw.on_tool_call, call_next=chain)
-
-        return await chain(tool_ctx)
+        return await self._tool_manager._dispatch_tool(name, arguments, ctx)
 
     def on_roots_list_changed(self, handler: Callable) -> None:
         self._client_notification_handlers.setdefault("roots_list_changed", []).append(handler)
@@ -814,28 +687,7 @@ class FasterMCP:
         ctx: Context | None = None,
     ) -> mcp_pb2.CallToolResponse:
         """Invoke a tool with a pre-parsed arguments dict (used by middleware chain)."""
-        tool = self._tools.get(name)
-        if not tool:
-            raise McpError(code=404, message=f"Tool '{name}' not found")
-        args = dict(arguments)
-        if tool.needs_context and ctx is not None:
-            hints = _resolve_hints(tool.handler)
-            for param_name, hint in hints.items():
-                if hint is Context:
-                    args[param_name] = ctx
-                    break
-        try:
-            result = await tool.handler(**args)
-            content = _to_content_items(result)
-            return mcp_pb2.CallToolResponse(content=content, is_error=False)
-        except Exception:
-            logger.exception("Tool '%s' raised an exception", name)
-            import traceback
-
-            return mcp_pb2.CallToolResponse(
-                content=[mcp_pb2.ContentItem(type="text", text=traceback.format_exc())],
-                is_error=True,
-            )
+        return await self._tool_manager._call_tool_with_dict(name, arguments, ctx)
 
     async def handle_call_tool(
         self,

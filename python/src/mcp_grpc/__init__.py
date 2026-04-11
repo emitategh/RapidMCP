@@ -24,7 +24,8 @@ from mcp_grpc.middleware import (
     ValidationMiddleware,
 )
 from mcp_grpc.context import Context
-from mcp_grpc.server import FasterMCP, ToolAnnotations
+from mcp_grpc.server import FasterMCP
+from mcp_grpc.tools import ToolAnnotations
 
 __all__ = [
     "Audio",
