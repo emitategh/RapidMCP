@@ -569,18 +569,6 @@ class FasterMCP:
             type=mcp_pb2.ServerNotification.PROMPTS_LIST_CHANGED,
         ))
 
-    def log(self, level: str, message: str, logger_name: str | None = None) -> None:
-        self._broadcast(mcp_pb2.ServerNotification(
-            type=mcp_pb2.ServerNotification.LOG,
-            payload=json.dumps({"level": level, "message": message, "logger": logger_name}),
-        ))
-
-    def progress(self, token: str, progress: float, total: float | None = None) -> None:
-        self._broadcast(mcp_pb2.ServerNotification(
-            type=mcp_pb2.ServerNotification.PROGRESS,
-            payload=json.dumps({"token": token, "progress": progress, "total": total}),
-        ))
-
     async def handle_call_tool(
         self, name: str, arguments_json: str, context: Context | None = None,
     ) -> mcp_pb2.CallToolResponse:
