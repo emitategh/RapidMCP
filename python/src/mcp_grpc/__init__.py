@@ -23,7 +23,8 @@ from mcp_grpc.middleware import (
     ToolCallContext,
     ValidationMiddleware,
 )
-from mcp_grpc.server import Context, FasterMCP, ToolAnnotations
+from mcp_grpc.context import Context
+from mcp_grpc.server import FasterMCP, ToolAnnotations
 
 __all__ = [
     "Audio",
