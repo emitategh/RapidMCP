@@ -122,45 +122,30 @@ class Context:
         await self._write_queue.put(envelope)
         return await asyncio.wait_for(future, timeout=30.0)
 
-    async def info(self, message: str, extra: dict | None = None) -> None:
-        """Send an info-level log to this session's client."""
+    async def _log(self, level: str, message: str, extra: dict | None) -> None:
         await self._write_queue.put(mcp_pb2.ServerEnvelope(
             request_id=0,
             notification=mcp_pb2.ServerNotification(
                 type=mcp_pb2.ServerNotification.LOG,
-                payload=json.dumps({"level": "info", "message": message, "extra": extra}),
+                payload=json.dumps({"level": level, "message": message, "extra": extra}),
             ),
         ))
+
+    async def info(self, message: str, extra: dict | None = None) -> None:
+        """Send an info-level log to this session's client."""
+        await self._log("info", message, extra)
 
     async def debug(self, message: str, extra: dict | None = None) -> None:
         """Send a debug-level log to this session's client."""
-        await self._write_queue.put(mcp_pb2.ServerEnvelope(
-            request_id=0,
-            notification=mcp_pb2.ServerNotification(
-                type=mcp_pb2.ServerNotification.LOG,
-                payload=json.dumps({"level": "debug", "message": message, "extra": extra}),
-            ),
-        ))
+        await self._log("debug", message, extra)
 
     async def warning(self, message: str, extra: dict | None = None) -> None:
         """Send a warning-level log to this session's client."""
-        await self._write_queue.put(mcp_pb2.ServerEnvelope(
-            request_id=0,
-            notification=mcp_pb2.ServerNotification(
-                type=mcp_pb2.ServerNotification.LOG,
-                payload=json.dumps({"level": "warning", "message": message, "extra": extra}),
-            ),
-        ))
+        await self._log("warning", message, extra)
 
     async def error(self, message: str, extra: dict | None = None) -> None:
         """Send an error-level log to this session's client."""
-        await self._write_queue.put(mcp_pb2.ServerEnvelope(
-            request_id=0,
-            notification=mcp_pb2.ServerNotification(
-                type=mcp_pb2.ServerNotification.LOG,
-                payload=json.dumps({"level": "error", "message": message, "extra": extra}),
-            ),
-        ))
+        await self._log("error", message, extra)
 
 
 def _build_input_schema(fn: Callable) -> str:

@@ -329,3 +329,22 @@ async def test_ctx_info_with_extra():
     await ctx.info("msg", extra={"count": 42})
     payload = json.loads(queue.get_nowait().notification.payload)
     assert payload["extra"] == {"count": 42}
+
+
+@pytest.mark.asyncio
+async def test_ctx_debug_with_extra():
+    import asyncio, json
+    from mcp_grpc.server import Context
+    from mcp_grpc._generated import mcp_pb2
+    from mcp_grpc.session import PendingRequests
+
+    queue = asyncio.Queue()
+    ctx = Context(
+        client_capabilities=mcp_pb2.ClientCapabilities(),
+        pending=PendingRequests(),
+        write_queue=queue,
+    )
+    await ctx.debug("msg", extra={"key": "val"})
+    payload = json.loads(queue.get_nowait().notification.payload)
+    assert payload["level"] == "debug"
+    assert payload["extra"] == {"key": "val"}
