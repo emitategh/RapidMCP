@@ -389,6 +389,49 @@ async def test_ctx_report_progress_with_total():
     assert payload["total"] == 100
 
 
+def test_future_annotations_context_detection():
+    """Tools defined in modules with `from __future__ import annotations` still detect Context."""
+    from _future_annotations_helper import register_tool_with_future_annotations
+
+    server = FasterMCP(name="test", version="0.1")
+    register_tool_with_future_annotations(server)
+
+    tools = server.list_registered_tools()
+    assert len(tools) == 1
+    assert tools[0].name == "future_tool"
+    assert tools[0].needs_context is True
+    schema = json.loads(tools[0].input_schema)
+    assert "text" in schema["properties"]
+    assert "ctx" not in schema["properties"]
+
+
+@pytest.mark.asyncio
+async def test_future_annotations_context_injection():
+    """Context is properly injected for tools from modules with deferred annotations."""
+    import asyncio
+
+    from _future_annotations_helper import register_tool_with_future_annotations
+
+    from mcp_grpc._generated import mcp_pb2
+    from mcp_grpc.server import Context
+    from mcp_grpc.session import PendingRequests
+
+    server = FasterMCP(name="test", version="0.1")
+    register_tool_with_future_annotations(server)
+
+    result = await server.handle_call_tool(
+        "future_tool",
+        '{"text": "hi"}',
+        context=Context(
+            client_capabilities=mcp_pb2.ClientCapabilities(),
+            pending=PendingRequests(),
+            write_queue=asyncio.Queue(),
+        ),
+    )
+    assert result.content[0].text == "got ctx: True, text: hi"
+    assert not result.is_error
+
+
 @pytest.mark.asyncio
 async def test_ctx_report_progress_without_total():
     import asyncio

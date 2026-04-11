@@ -5,7 +5,6 @@ import pytest
 from mcp_grpc import Client, Context, FasterMCP
 from mcp_grpc._generated import mcp_pb2
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -28,8 +27,6 @@ def _text_response(*texts: str) -> mcp_pb2.SamplingResponse:
 @pytest.mark.asyncio
 async def test_sample_dict_message_string_content():
     """ctx.sample() wraps a plain-string dict content into a ContentItem list."""
-    captured: list[mcp_pb2.SamplingRequest] = []
-
     app = FasterMCP("t", "1")
 
     @app.tool(description="t")
@@ -287,6 +284,7 @@ async def test_tool_use_content_in_sampling_response():
         return f"{item.type}:{item.tool_name}:{item.tool_use_id}"
 
     async with app:
+
         async def handler(req: mcp_pb2.SamplingRequest) -> mcp_pb2.SamplingResponse:
             assert req.tool_choice == "required"
             return mcp_pb2.SamplingResponse(

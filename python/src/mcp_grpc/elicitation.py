@@ -6,30 +6,39 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
-
 # ---------------------------------------------------------------------------
 # Field descriptors
 # ---------------------------------------------------------------------------
 
 
 @dataclass
-class StringField:
-    """A required/optional string form field."""
+class _BaseField:
+    """Shared attributes for all elicitation field types."""
 
     title: str = ""
     description: str = ""
     required: bool = True
+
+    def _base_property(self, json_type: str) -> dict[str, Any]:
+        prop: dict[str, Any] = {"type": json_type}
+        if self.title:
+            prop["title"] = self.title
+        if self.description:
+            prop["description"] = self.description
+        return prop
+
+
+@dataclass
+class StringField(_BaseField):
+    """A required/optional string form field."""
+
     default: str | None = None
     min_length: int | None = None
     max_length: int | None = None
     pattern: str | None = None
 
     def _to_property(self) -> dict[str, Any]:
-        prop: dict[str, Any] = {"type": "string"}
-        if self.title:
-            prop["title"] = self.title
-        if self.description:
-            prop["description"] = self.description
+        prop = self._base_property("string")
         if self.default is not None:
             prop["default"] = self.default
         if self.min_length is not None:
@@ -42,42 +51,28 @@ class StringField:
 
 
 @dataclass
-class BoolField:
+class BoolField(_BaseField):
     """A required/optional boolean form field."""
 
-    title: str = ""
-    description: str = ""
-    required: bool = True
     default: bool | None = None
 
     def _to_property(self) -> dict[str, Any]:
-        prop: dict[str, Any] = {"type": "boolean"}
-        if self.title:
-            prop["title"] = self.title
-        if self.description:
-            prop["description"] = self.description
+        prop = self._base_property("boolean")
         if self.default is not None:
             prop["default"] = self.default
         return prop
 
 
 @dataclass
-class IntField:
+class IntField(_BaseField):
     """A required/optional integer form field."""
 
-    title: str = ""
-    description: str = ""
-    required: bool = True
     default: int | None = None
     minimum: int | None = None
     maximum: int | None = None
 
     def _to_property(self) -> dict[str, Any]:
-        prop: dict[str, Any] = {"type": "integer"}
-        if self.title:
-            prop["title"] = self.title
-        if self.description:
-            prop["description"] = self.description
+        prop = self._base_property("integer")
         if self.default is not None:
             prop["default"] = self.default
         if self.minimum is not None:
@@ -88,22 +83,15 @@ class IntField:
 
 
 @dataclass
-class FloatField:
+class FloatField(_BaseField):
     """A required/optional number form field."""
 
-    title: str = ""
-    description: str = ""
-    required: bool = True
     default: float | None = None
     minimum: float | None = None
     maximum: float | None = None
 
     def _to_property(self) -> dict[str, Any]:
-        prop: dict[str, Any] = {"type": "number"}
-        if self.title:
-            prop["title"] = self.title
-        if self.description:
-            prop["description"] = self.description
+        prop = self._base_property("number")
         if self.default is not None:
             prop["default"] = self.default
         if self.minimum is not None:
@@ -114,21 +102,15 @@ class FloatField:
 
 
 @dataclass
-class EnumField:
+class EnumField(_BaseField):
     """A required/optional single-choice enum form field."""
 
-    choices: list[str]
-    title: str = ""
-    description: str = ""
-    required: bool = True
+    choices: list[str] = field(default_factory=list)
     default: str | None = None
 
     def _to_property(self) -> dict[str, Any]:
-        prop: dict[str, Any] = {"type": "string", "enum": list(self.choices)}
-        if self.title:
-            prop["title"] = self.title
-        if self.description:
-            prop["description"] = self.description
+        prop = self._base_property("string")
+        prop["enum"] = list(self.choices)
         if self.default is not None:
             prop["default"] = self.default
         return prop

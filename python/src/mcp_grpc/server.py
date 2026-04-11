@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+import logging
+import typing
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from functools import partial
@@ -15,10 +17,13 @@ from grpc import aio as grpc_aio
 from mcp_grpc._generated import mcp_pb2, mcp_pb2_grpc
 from mcp_grpc.content import Audio, Image
 from mcp_grpc.elicitation import ElicitationResult, build_elicitation_schema
-from mcp_grpc.elicitation import ElicitationField  # noqa: F401 — re-exported for convenience
 from mcp_grpc.errors import McpError
 from mcp_grpc.middleware import Middleware, ToolCallContext
 from mcp_grpc.session import PendingRequests
+
+logger = logging.getLogger("mcp_grpc.server")
+
+_DEFAULT_TIMEOUT: float = 30.0
 
 
 @dataclass
@@ -43,7 +48,7 @@ class RegisteredTool:
     input_schema: str
     handler: Callable[..., Awaitable[Any]]
     needs_context: bool = False
-    output_schema: str = ""           # JSON schema string; empty = no structured output
+    output_schema: str = ""  # JSON schema string; empty = no structured output
     annotations: ToolAnnotations | None = None
 
 
@@ -111,7 +116,7 @@ class Context:
             model_preferences: Optional model selection hints.  Accepts an
                 ``mcp_pb2.ModelPreferences`` proto or a dict with optional keys
                 ``hints`` (list of model-name strings), ``cost_priority``,
-                ``speed_priority``, ``intelligence_priority`` (each 0–1 float).
+                ``speed_priority``, ``intelligence_priority`` (each 0-1 float).
             tools: Optional list of tools available during sampling.  Each
                 element may be an ``mcp_pb2.SamplingTool`` proto or a dict with
                 ``name``, ``description``, and ``input_schema`` keys.
@@ -161,7 +166,9 @@ class Context:
             model_prefs_proto = model_preferences
         elif isinstance(model_preferences, dict):
             hints = [
-                mcp_pb2.ModelHint(name=h) if isinstance(h, str) else mcp_pb2.ModelHint(name=h.get("name", ""))
+                mcp_pb2.ModelHint(name=h)
+                if isinstance(h, str)
+                else mcp_pb2.ModelHint(name=h.get("name", ""))
                 for h in model_preferences.get("hints", [])
             ]
             model_prefs_proto = mcp_pb2.ModelPreferences(
@@ -198,7 +205,7 @@ class Context:
 
         envelope = mcp_pb2.ServerEnvelope(request_id=rid, sampling=req)
         await self._write_queue.put(envelope)
-        return await asyncio.wait_for(future, timeout=30.0)
+        return await asyncio.wait_for(future, timeout=_DEFAULT_TIMEOUT)
 
     async def elicit(
         self,
@@ -239,7 +246,7 @@ class Context:
             ),
         )
         await self._write_queue.put(envelope)
-        raw: mcp_pb2.ElicitationResponse = await asyncio.wait_for(future, timeout=30.0)
+        raw: mcp_pb2.ElicitationResponse = await asyncio.wait_for(future, timeout=_DEFAULT_TIMEOUT)
         data: dict = {}
         if raw.content:
             try:
@@ -301,7 +308,7 @@ class Context:
                 roots_request=mcp_pb2.ListRootsRequest(),
             )
         )
-        return await asyncio.wait_for(future, timeout=30.0)
+        return await asyncio.wait_for(future, timeout=_DEFAULT_TIMEOUT)
 
 
 def _prefix_resource_uri(uri: str, prefix: str) -> str:
@@ -344,15 +351,39 @@ def _to_content_items(result: Any) -> list[mcp_pb2.ContentItem]:
     return [mcp_pb2.ContentItem(type="text", text=str(result))]
 
 
+def _resolve_hints(fn: Callable) -> dict[str, Any]:
+    """Resolve type hints for *fn*, handling ``from __future__ import annotations``.
+
+    Returns the mapping from ``typing.get_type_hints`` when possible.
+    Falls back to raw ``inspect.signature`` annotations so that
+    un-importable forward references don't crash registration.
+    """
+    try:
+        return typing.get_type_hints(fn)
+    except Exception:
+        return {
+            name: p.annotation
+            for name, p in inspect.signature(fn).parameters.items()
+            if p.annotation is not inspect.Parameter.empty
+        }
+
+
+def _needs_context(fn: Callable) -> bool:
+    """Return True if *fn* declares a ``ctx: Context`` parameter."""
+    hints = _resolve_hints(fn)
+    return any(v is Context for v in hints.values())
+
+
 def _build_input_schema(fn: Callable) -> str:
     """Build a JSON Schema from function type hints."""
+    hints = _resolve_hints(fn)
     sig = inspect.signature(fn)
     properties: dict[str, Any] = {}
     required: list[str] = []
     type_map = {str: "string", int: "integer", float: "number", bool: "boolean"}
 
     for param_name, param in sig.parameters.items():
-        annotation = param.annotation
+        annotation = hints.get(param_name, param.annotation)
         if annotation is Context:
             continue  # skip DI parameters
         json_type = type_map.get(annotation, "string")
@@ -364,6 +395,29 @@ def _build_input_schema(fn: Callable) -> str:
     if required:
         schema["required"] = required
     return json.dumps(schema)
+
+
+def _paginate(items: list, cursor_str: str, page_size: int | None) -> tuple[list, str]:
+    """Slice *items* according to *page_size* and *cursor_str*.
+
+    *cursor_str* is an opaque decimal integer offset (empty = 0).
+    Returns ``(page, next_cursor_str)`` where *next_cursor_str* is empty
+    when there are no further pages.
+
+    Invalid cursors (non-numeric, negative) are treated as offset 0.
+    """
+    if page_size is None:
+        return items, ""
+    try:
+        offset = int(cursor_str) if cursor_str else 0
+    except (ValueError, TypeError):
+        offset = 0
+    if offset < 0:
+        offset = 0
+    page = items[offset : offset + page_size]
+    next_offset = offset + page_size
+    next_cursor = str(next_offset) if next_offset < len(items) else ""
+    return page, next_cursor
 
 
 class _McpServicer(mcp_pb2_grpc.McpServicer):
@@ -383,22 +437,6 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                 if envelope is None:
                     break
                 yield envelope
-
-        def _paginate(items: list, cursor_str: str) -> tuple[list, str]:
-            """Slice *items* according to the server page_size and *cursor_str*.
-
-            *cursor_str* is an opaque decimal integer offset (empty = 0).
-            Returns (page, next_cursor_str) where next_cursor_str is empty
-            when there are no further pages.
-            """
-            ps = self._server.page_size
-            if ps is None:
-                return items, ""
-            offset = int(cursor_str) if cursor_str else 0
-            page = items[offset : offset + ps]
-            next_offset = offset + ps
-            next_cursor = str(next_offset) if next_offset < len(items) else ""
-            return page, next_cursor
 
         async def _reader():
             # Maps request_id → running tool Task for cancellation support
@@ -452,7 +490,7 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                                 annotations=ann_proto,
                             )
                         )
-                    page, next_cursor = _paginate(all_tools, cursor_str)
+                    page, next_cursor = _paginate(all_tools, cursor_str, self._server.page_size)
                     await write_queue.put(
                         mcp_pb2.ServerEnvelope(
                             request_id=rid,
@@ -516,7 +554,7 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                         )
                         for r in self._server._resources.values()
                     ]
-                    page, next_cursor = _paginate(all_resources, cursor_str)
+                    page, next_cursor = _paginate(all_resources, cursor_str, self._server.page_size)
                     await write_queue.put(
                         mcp_pb2.ServerEnvelope(
                             request_id=rid,
@@ -540,7 +578,20 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                             )
                         )
                     else:
-                        raw = await res.handler()
+                        try:
+                            raw = await res.handler()
+                        except Exception:
+                            logger.exception("Resource handler for '%s' raised", uri)
+                            await write_queue.put(
+                                mcp_pb2.ServerEnvelope(
+                                    request_id=rid,
+                                    error=mcp_pb2.ErrorResponse(
+                                        code=500,
+                                        message=f"Resource handler for '{uri}' failed",
+                                    ),
+                                )
+                            )
+                            continue
                         if isinstance(raw, bytes):
                             mime = res.mime_type
                             if mime.startswith("image/"):
@@ -577,7 +628,7 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                         )
                         for t in self._server._resource_templates.values()
                     ]
-                    page, next_cursor = _paginate(all_templates, cursor_str)
+                    page, next_cursor = _paginate(all_templates, cursor_str, self._server.page_size)
                     await write_queue.put(
                         mcp_pb2.ServerEnvelope(
                             request_id=rid,
@@ -597,7 +648,7 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                         )
                         for p in self._server._prompts.values()
                     ]
-                    page, next_cursor = _paginate(all_prompts, cursor_str)
+                    page, next_cursor = _paginate(all_prompts, cursor_str, self._server.page_size)
                     await write_queue.put(
                         mcp_pb2.ServerEnvelope(
                             request_id=rid,
@@ -621,7 +672,20 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                             )
                         )
                     else:
-                        text = await prompt.handler(**dict(req.arguments))
+                        try:
+                            text = await prompt.handler(**dict(req.arguments))
+                        except Exception:
+                            logger.exception("Prompt handler '%s' raised", req.name)
+                            await write_queue.put(
+                                mcp_pb2.ServerEnvelope(
+                                    request_id=rid,
+                                    error=mcp_pb2.ErrorResponse(
+                                        code=500,
+                                        message=f"Prompt handler '{req.name}' failed",
+                                    ),
+                                )
+                            )
+                            continue
                         await write_queue.put(
                             mcp_pb2.ServerEnvelope(
                                 request_id=rid,
@@ -682,9 +746,12 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                     notif = envelope.client_notification
                     type_name = mcp_pb2.ClientNotification.Type.Name(notif.type).lower()
                     for handler in self._server._client_notification_handlers.get(type_name, []):
-                        result = handler(notif.payload)
-                        if asyncio.iscoroutine(result):
-                            await result
+                        try:
+                            result = handler(notif.payload)
+                            if asyncio.iscoroutine(result):
+                                await result
+                        except Exception:
+                            logger.exception("Notification handler for '%s' raised", type_name)
 
                 elif msg_type == "cancel":
                     target_id = envelope.cancel.target_request_id
@@ -695,9 +762,12 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                 elif msg_type == "subscribe_res":
                     uri = envelope.subscribe_res.uri
                     for handler in self._server._subscribe_handlers:
-                        result = handler(uri)
-                        if asyncio.iscoroutine(result):
-                            await result
+                        try:
+                            result = handler(uri)
+                            if asyncio.iscoroutine(result):
+                                await result
+                        except Exception:
+                            logger.exception("Subscribe handler for '%s' raised", uri)
 
                 else:
                     await write_queue.put(
@@ -726,6 +796,11 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
             try:
                 await reader_task
             except asyncio.CancelledError:
+                pass
+            # Clean up session queue to prevent memory leaks
+            try:
+                self._server._session_queues.remove(write_queue)
+            except ValueError:
                 pass
 
 
@@ -780,11 +855,10 @@ class FasterMCP:
 
         def decorator(fn: Callable) -> Callable:
             desc = description or (fn.__doc__ or "").strip()
-            sig = inspect.signature(fn)
-            needs_ctx = any(p.annotation is Context for p in sig.parameters.values())
+            needs_ctx = _needs_context(fn)
 
             ann: ToolAnnotations | None = None
-            if any([read_only, destructive, idempotent, open_world, title]):
+            if any((read_only, destructive, idempotent, open_world, title)):
                 ann = ToolAnnotations(
                     title=title,
                     read_only_hint=read_only,
@@ -1027,7 +1101,7 @@ class FasterMCP:
     async def _call_tool_with_dict(
         self,
         name: str,
-        arguments: dict,
+        arguments: dict[str, Any],
         ctx: Context | None = None,
     ) -> mcp_pb2.CallToolResponse:
         """Invoke a tool with a pre-parsed arguments dict (used by middleware chain)."""
@@ -1036,18 +1110,21 @@ class FasterMCP:
             raise McpError(code=404, message=f"Tool '{name}' not found")
         args = dict(arguments)
         if tool.needs_context and ctx is not None:
-            sig = inspect.signature(tool.handler)
-            for param_name, param in sig.parameters.items():
-                if param.annotation is Context:
+            hints = _resolve_hints(tool.handler)
+            for param_name, hint in hints.items():
+                if hint is Context:
                     args[param_name] = ctx
                     break
         try:
             result = await tool.handler(**args)
             content = _to_content_items(result)
             return mcp_pb2.CallToolResponse(content=content, is_error=False)
-        except Exception as e:
+        except Exception:
+            logger.exception("Tool '%s' raised an exception", name)
+            import traceback
+
             return mcp_pb2.CallToolResponse(
-                content=[mcp_pb2.ContentItem(type="text", text=str(e))],
+                content=[mcp_pb2.ContentItem(type="text", text=traceback.format_exc())],
                 is_error=True,
             )
 

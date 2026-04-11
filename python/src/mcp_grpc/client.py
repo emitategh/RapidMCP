@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from dataclasses import dataclass
 from typing import Any
 
@@ -13,6 +14,8 @@ from grpc import aio as grpc_aio
 from mcp_grpc._generated import mcp_pb2, mcp_pb2_grpc
 from mcp_grpc.errors import McpError
 from mcp_grpc.session import NotificationRegistry, PendingRequests
+
+logger = logging.getLogger("mcp_grpc.client")
 
 
 @dataclass
@@ -66,6 +69,8 @@ class Client:
     async def _outbound_iter(self):
         while True:
             envelope = await self._write_queue.get()
+            if envelope is None:
+                break
             yield envelope
 
     async def _send(self, envelope: mcp_pb2.ClientEnvelope) -> None:
@@ -135,7 +140,7 @@ class Client:
                     )
                 )
         except Exception:
-            pass  # handler errors silently dropped for now
+            logger.exception("Handler for server request '%s' raised", msg_type)
 
     async def _initialize(self) -> None:
         env = mcp_pb2.ClientEnvelope(
@@ -273,6 +278,9 @@ class Client:
         )
 
     async def close(self) -> None:
+        # Signal outbound iterator to stop
+        if hasattr(self, "_write_queue"):
+            await self._write_queue.put(None)
         if self._reader_task:
             self._reader_task.cancel()
             try:

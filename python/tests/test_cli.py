@@ -15,7 +15,6 @@ import pytest
 
 from mcp_grpc.cli import _CANDIDATE_NAMES, import_server, parse_file_path
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -71,7 +70,7 @@ def test_parse_file_path_colon_in_object(tmp_path: Path):
     f = tmp_path / "server.py"
     f.touch()
     # Only the *last* colon is treated as separator
-    path, obj = parse_file_path(f"{f}:my_app")
+    _path, obj = parse_file_path(f"{f}:my_app")
     assert obj == "my_app"
 
 

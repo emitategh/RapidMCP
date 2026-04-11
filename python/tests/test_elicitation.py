@@ -19,7 +19,6 @@ from mcp_grpc import (
 )
 from mcp_grpc._generated import mcp_pb2
 
-
 # ---------------------------------------------------------------------------
 # Unit tests — field descriptors and schema builder
 # ---------------------------------------------------------------------------
@@ -58,9 +57,7 @@ def test_bool_field():
 
 
 def test_int_field():
-    schema = json.loads(
-        build_elicitation_schema({"count": IntField(minimum=1, maximum=100)})
-    )
+    schema = json.loads(build_elicitation_schema({"count": IntField(minimum=1, maximum=100)}))
     prop = schema["properties"]["count"]
     assert prop["type"] == "integer"
     assert prop["minimum"] == 1
@@ -68,9 +65,7 @@ def test_int_field():
 
 
 def test_float_field():
-    schema = json.loads(
-        build_elicitation_schema({"ratio": FloatField(minimum=0.0, maximum=1.0)})
-    )
+    schema = json.loads(build_elicitation_schema({"ratio": FloatField(minimum=0.0, maximum=1.0)}))
     prop = schema["properties"]["ratio"]
     assert prop["type"] == "number"
     assert prop["minimum"] == 0.0
@@ -237,15 +232,17 @@ async def test_elicit_schema_and_fields_mutual_exclusion():
 # ---------------------------------------------------------------------------
 
 
-
 def _register_tools(app: FasterMCP, names: list) -> None:
     """Register one tool per name — avoids the closure-in-loop trap."""
     for name in names:
+
         def _make(n: str):
             async def _fn() -> str:
                 return n
+
             _fn.__name__ = n
             return _fn
+
         app.tool(description=name)(_make(name))
 
 
@@ -430,7 +427,6 @@ async def test_cancel_in_flight_tool():
         await client.connect()
         try:
             # Fire tool call without awaiting — capture the request_id
-            import asyncio as _asyncio
 
             rid = client._pending.next_id()
             env = mcp_pb2.ClientEnvelope(
@@ -447,7 +443,7 @@ async def test_cancel_in_flight_tool():
             await client.cancel(rid)
 
             # The pending future should resolve to an error response
-            result = await asyncio.wait_for(future, timeout=5.0)
+            await asyncio.wait_for(future, timeout=5.0)
             # result is either a CallToolResponse (is_error) or an ErrorResponse
             # Since cancel sends an ErrorResponse with code 499, _pending.resolve gets ErrorResponse
             # But _reader_loop rejects on "error" message type

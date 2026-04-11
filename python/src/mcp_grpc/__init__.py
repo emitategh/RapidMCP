@@ -1,5 +1,7 @@
 """mcp-grpc: gRPC-native tool-calling protocol inspired by MCP."""
 
+__version__ = "0.1.0"
+
 from mcp_grpc.client import Client, ListResult
 from mcp_grpc.content import Audio, Image
 from mcp_grpc.elicitation import (
