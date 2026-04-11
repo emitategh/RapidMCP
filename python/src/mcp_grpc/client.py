@@ -183,6 +183,13 @@ class Client:
         )
         return await self._request(env)
 
+    async def subscribe_resource(self, uri: str) -> None:
+        """Subscribe to updates for a specific resource URI."""
+        await self._send(mcp_pb2.ClientEnvelope(
+            request_id=0,
+            subscribe_res=mcp_pb2.SubscribeResourceReq(uri=uri),
+        ))
+
     async def list_prompts(self, cursor: str | None = None) -> ListResult:
         env = mcp_pb2.ClientEnvelope(
             list_prompts=mcp_pb2.ListPromptsRequest(cursor=cursor or "")

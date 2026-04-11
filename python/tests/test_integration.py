@@ -346,3 +346,34 @@ async def test_grpc_cancel_no_crash():
             result = await client.call_tool("echo", {"text": "still works"})
             assert result.content[0].text == "still works"
             assert not result.is_error
+
+
+@pytest.mark.asyncio
+async def test_grpc_resource_subscribe():
+    """Client subscribes to a resource URI; server fires resource_updated; client receives it."""
+    server = FasterMCP(name="subscribe-server", version="0.1")
+
+    @server.resource(uri="res://counter", description="A counter")
+    async def counter() -> str:
+        return "0"
+
+    subscribed_uris: list[str] = []
+    server.on_resource_subscribe(lambda uri: subscribed_uris.append(uri))
+
+    async with server:
+        async with Client(f"localhost:{server.port}") as client:
+            notifications: list[dict] = []
+            client.on_notification(
+                "resource_updated", lambda p: notifications.append(json.loads(p))
+            )
+
+            await client.subscribe_resource("res://counter")
+            await asyncio.sleep(0.1)  # let subscription arrive at server
+
+            assert subscribed_uris == ["res://counter"]
+
+            server.notify_resource_updated("res://counter")
+            await asyncio.sleep(0.2)
+
+            assert len(notifications) == 1
+            assert notifications[0]["uri"] == "res://counter"
