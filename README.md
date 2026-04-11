@@ -17,9 +17,9 @@ FasterMCP is a gRPC-native transport for the [Model Context Protocol](https://mo
 ### Server
 
 ```python
-from mcp_grpc import McpServer
+from mcp_grpc import FasterMCP
 
-server = McpServer(name="my-server", version="1.0.0")
+server = FasterMCP(name="my-server", version="1.0.0")
 
 @server.tool(description="Echo the input back")
 async def echo(text: str) -> str:
@@ -31,9 +31,9 @@ server.run(port=50051)
 ### Client
 
 ```python
-from mcp_grpc import McpClient
+from mcp_grpc import Client
 
-async with McpClient("localhost:50051") as client:
+async with Client("localhost:50051") as client:
     result = await client.list_tools()
     tools = result.items  # ListResult with pagination support
 
@@ -41,19 +41,57 @@ async with McpClient("localhost:50051") as client:
     print(result.content[0].text)  # "hello"
 ```
 
-### Sampling (LLM completion mid-tool)
+### Middleware
 
-Tools can request LLM completions from the client using `ToolContext`:
+Intercept tool calls before and after execution:
 
 ```python
-from mcp_grpc import McpServer, ToolContext
+from mcp_grpc import FasterMCP, Middleware, ToolCallContext, TimingMiddleware, LoggingMiddleware
+from mcp_grpc._generated import mcp_pb2
+import time
 
-server = McpServer(name="my-server", version="1.0.0")
+# Use built-ins
+server = FasterMCP(name="my-server", version="1.0.0", middleware=[
+    TimingMiddleware(),    # logs "echo completed in 0.52ms"
+    LoggingMiddleware(),   # logs args before, is_error after
+])
+
+# Or write your own
+class RateLimitMiddleware(Middleware):
+    def __init__(self, max_per_second: float = 10.0):
+        self._min_interval = 1.0 / max_per_second
+        self._last = 0.0
+
+    async def on_tool_call(self, tool_ctx: ToolCallContext, call_next) -> mcp_pb2.CallToolResponse:
+        now = time.monotonic()
+        if now - self._last < self._min_interval:
+            return mcp_pb2.CallToolResponse(
+                content=[mcp_pb2.ContentItem(type="text", text="rate limit exceeded")],
+                is_error=True,
+            )
+        self._last = now
+        return await call_next(tool_ctx)
+
+server.add_middleware(RateLimitMiddleware(max_per_second=5.0))
+```
+
+### Sampling (LLM completion mid-tool)
+
+Tools can request LLM completions from the client using `Context`:
+
+```python
+from mcp_grpc import FasterMCP, Context
+from mcp_grpc._generated import mcp_pb2
+
+server = FasterMCP(name="my-server", version="1.0.0")
 
 @server.tool(description="Summarize text using LLM")
-async def summarize(text: str, ctx: ToolContext) -> str:
+async def summarize(text: str, ctx: Context) -> str:
     result = await ctx.sample(
-        messages=[{"role": "user", "content": f"Summarize: {text}"}],
+        messages=[mcp_pb2.SamplingMessage(
+            role="user",
+            content=mcp_pb2.ContentItem(type="text", text=f"Summarize: {text}"),
+        )],
         max_tokens=200,
     )
     return result.content.text
@@ -70,7 +108,7 @@ async def my_sampling_handler(request):
         model="gpt-4", stop_reason="end",
     )
 
-client = McpClient("localhost:50051")
+client = Client("localhost:50051")
 client.set_sampling_handler(my_sampling_handler)
 await client.connect()
 ```
@@ -81,7 +119,7 @@ Tools can ask the user for input:
 
 ```python
 @server.tool(description="Deploy to production")
-async def deploy(service: str, ctx: ToolContext) -> str:
+async def deploy(service: str, ctx: Context) -> str:
     response = await ctx.elicit(
         message=f"Deploy {service} to prod?",
         schema='{"type": "object", "properties": {"confirm": {"type": "boolean"}}}',
@@ -89,6 +127,17 @@ async def deploy(service: str, ctx: ToolContext) -> str:
     if response.action == "accept":
         return f"Deployed {service}"
     return "Cancelled"
+```
+
+### Logging and progress from tools
+
+```python
+@server.tool(description="Long-running job")
+async def process(data: str, ctx: Context) -> str:
+    await ctx.info("starting", extra={"input": data})
+    await ctx.report_progress(progress=50, total=100)
+    await ctx.info("done")
+    return data
 ```
 
 ### Resource templates
@@ -116,12 +165,11 @@ async def complete_language(argument_name: str, value: str) -> list[str]:
 ```python
 # Server emits
 server.notify_tools_list_changed()
-server.log("info", "Something happened")
-server.progress("task-1", 0.5, 1.0)
+server.notify_resource_updated("res://my-resource")
 
 # Client receives
 client.on_notification("tools_list_changed", my_callback)
-client.on_notification("log", my_log_handler)
+client.on_notification("resource_updated", my_handler)
 
 # Client emits
 await client.notify_roots_list_changed()
@@ -134,20 +182,22 @@ server.on_roots_list_changed(my_handler)
 
 | Feature | Status |
 |---|---|
-| Tools (list, call) | Supported |
-| Resources (list, read, subscribe) | Supported |
-| Resource templates | Supported |
-| Prompts (list, get) | Supported |
-| Completions | Supported |
-| Pagination (all list methods) | Supported |
-| Sampling (`ctx.sample()`) | Supported |
-| Elicitation (`ctx.elicit()`) | Supported |
-| Roots | Supported |
-| Notifications (bidirectional) | Supported |
-| Logging / Progress | Supported |
-| Cancellation | Supported |
-| Capability negotiation | Supported |
-| Ping/Pong | Supported |
+| Tools (list, call) | ✅ |
+| Resources (list, read, subscribe) | ✅ |
+| Resource templates | ✅ |
+| Prompts (list, get) | ✅ |
+| Completions | ✅ |
+| Pagination (all list methods) | ✅ |
+| Sampling (`ctx.sample()`) | ✅ |
+| Elicitation (`ctx.elicit()`) | ✅ |
+| Roots (`ctx.list_roots()`) | ✅ |
+| Notifications (bidirectional) | ✅ |
+| Logging (`ctx.info/debug/warning/error`) | ✅ |
+| Progress (`ctx.report_progress`) | ✅ |
+| Cancellation | ✅ |
+| Capability negotiation | ✅ |
+| Ping/Pong | ✅ |
+| **Middleware** (`on_tool_call` chain) | ✅ |
 
 ## Installation
 
@@ -163,7 +213,7 @@ cd python
 uv run pytest tests/ -v
 ```
 
-37 tests covering: tool context injection, sampling/elicitation round-trips, resource templates, completions, pagination, notifications, and full gRPC integration over loopback.
+69 tests covering: tool context injection, sampling/elicitation round-trips, resource templates, completions, pagination, notifications, cancellation, resource subscribe, roots, and the full middleware chain (intercept, argument mutation, chain ordering, built-in TimingMiddleware/LoggingMiddleware).
 
 ## Benchmark: FasterMCP vs FastMCP (Streamable HTTP)
 
@@ -201,12 +251,13 @@ FasterMCP/
 ├── proto/mcp.proto              <- Protocol definition (single source of truth)
 ├── python/
 │   ├── src/mcp_grpc/
-│   │   ├── server.py            <- McpServer, ToolContext, decorator API, gRPC servicer
-│   │   ├── client.py            <- McpClient, ListResult, sampling/elicitation handlers
+│   │   ├── server.py            <- FasterMCP, Context, _McpServicer, decorators
+│   │   ├── client.py            <- Client, ListResult, sampling/elicitation/roots handlers
+│   │   ├── middleware.py        <- Middleware, ToolCallContext, TimingMiddleware, LoggingMiddleware
 │   │   ├── session.py           <- PendingRequests, NotificationRegistry
-│   │   ├── errors.py            <- McpError
+│   │   ├── errors.py            <- McpError, ToolError
 │   │   └── testing.py           <- InProcessChannel for unit tests
-│   └── tests/                   <- 37 tests (unit + integration)
+│   └── tests/                   <- 69 tests (unit + integration)
 ├── benchmark/
 │   ├── run_benchmark.py         <- Latency harness
 │   ├── grpc_server.py           <- FasterMCP echo server (gRPC)
@@ -220,13 +271,14 @@ FasterMCP/
 
 - **One service, one bidi streaming RPC.** `Session(stream ClientEnvelope) returns (stream ServerEnvelope)` carries all messages — mirroring MCP's duplex channel.
 - **Write-queue servicer.** Concurrent reader/writer tasks per session. Enables notifications (server push), sampling/elicitation (mid-handler server-to-client requests), and concurrent tool execution.
-- **ToolContext dependency injection.** Tool handlers that declare `ctx: ToolContext` get sampling/elicitation capabilities injected automatically. Tools without it work unchanged.
+- **Context as explicit DI.** Tool handlers that declare `ctx: Context` get sampling/elicitation/logging capabilities injected per-call. Unlike FastMCP, Context is not pulled from a ContextVar — it's constructed explicitly and DI-injected, so middleware receives `ctx=None` for tools that didn't opt in.
+- **Middleware chain.** `functools.partial` reversed-registration chain wired into `_dispatch_tool`. First-registered middleware is outermost.
 - **Protobuf envelopes with `oneof`.** Each envelope carries a `request_id` and one message type. The SDK handles correlation transparently via `PendingRequests` (same pattern as the official MCP SDK's `BaseSession`).
 
 See [design spec](docs/superpowers/specs/2026-04-10-mcp-grpc-design.md) for the full protocol definition.
 
 ## Status
 
-**Python SDK: feature-complete with full MCP spec parity.** Integrated into a [LiveKit](https://livekit.io/) voice agent for low-latency tool calling.
+**Python SDK: feature-complete with full MCP spec parity + middleware.**
 
-Next steps: TypeScript SDK, TLS/mTLS, PyPI packaging, CI pipeline.
+Next: server mounting/composition (`main.mount(sub, prefix="x")`), CLI (`fastermcp run server.py`).
