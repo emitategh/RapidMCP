@@ -1,17 +1,17 @@
-"""LiveKit integration — GrpcToolset adapter for livekit-agents.
+"""LiveKit integration — MCPToolsetGRPC adapter for livekit-agents.
 
-GrpcToolset is a livekit ``Toolset`` backed by a FasterMCP gRPC server.
+MCPToolsetGRPC is a livekit ``Toolset`` backed by a FasterMCP gRPC server.
 It owns the ``Client`` lifecycle and is the gRPC counterpart to livekit's
 built-in ``MCPToolset(MCPServerHTTP(url=...))``.
 
 Usage::
 
     from livekit.agents.llm.mcp import MCPToolset, MCPServerHTTP
-    from mcp_grpc.integrations.livekit import GrpcToolset
+    from mcp_grpc.integrations.livekit import MCPToolsetGRPC
 
     session = AgentSession(
         tools=[
-            GrpcToolset(address="mcp-server:50051"),
+            MCPToolsetGRPC(address="mcp-server:50051"),
             MCPToolset(id="http-tools", mcp_server=MCPServerHTTP(url="http://...")),
         ],
         ...
@@ -40,7 +40,7 @@ except ImportError as e:
     ) from e
 
 
-class GrpcToolset(Toolset):
+class MCPToolsetGRPC(Toolset):
     """LiveKit Toolset backed by a FasterMCP gRPC server.
 
     Owns the ``Client`` connection lifecycle: connects on ``setup()``,
@@ -101,7 +101,7 @@ class GrpcToolset(Toolset):
 
         self._tools = tools
         logger.info(
-            "GrpcToolset connected to %s — %d tool(s): %s",
+            "MCPToolsetGRPC connected to %s — %d tool(s): %s",
             self._address, len(tools), [t.name for t in result.items],
         )
         return self
@@ -109,8 +109,8 @@ class GrpcToolset(Toolset):
     async def aclose(self) -> None:
         await super().aclose()
         await self._client.close()
-        logger.info("GrpcToolset disconnected from %s", self._address)
+        logger.info("MCPToolsetGRPC disconnected from %s", self._address)
 
     def __repr__(self) -> str:
         allowed = f", allowed={list(self._allowed)}" if self._allowed else ""
-        return f"GrpcToolset(address={self._address!r}{allowed})"
+        return f"MCPToolsetGRPC(address={self._address!r}{allowed})"
