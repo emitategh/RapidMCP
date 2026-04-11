@@ -77,13 +77,17 @@ class MCPServerGRPC(MCPServer):
                 continue
 
             async def _tool_called(raw_arguments: dict[str, Any], _name: str = name) -> str:
+                import time
                 if not self._connected:
                     raise ToolError(
                         "Tool invocation failed: gRPC connection is closed. "
                         "Check that the MCPServerGRPC is still running."
                     )
 
+                t0 = time.perf_counter()
                 tool_result = await self._grpc_client.call_tool(_name, raw_arguments)
+                ms = (time.perf_counter() - t0) * 1000
+                logger.info(f"[gRPC] {_name} — {ms:.2f}ms")
 
                 if tool_result.is_error:
                     error_str = "\n".join(
