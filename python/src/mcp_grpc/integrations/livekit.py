@@ -36,18 +36,29 @@ class MCPServerGRPC(MCPServer):
 
     Plugs into LiveKit's ``mcp_servers=[]`` parameter on ``AgentSession``.
     Tools are discovered and called over gRPC via ``McpClient``.
+
+    Args:
+        address: gRPC server address (e.g. "mcp-server:50051")
+        allowed_tools: Optional list of tool names to expose. None = all.
+        sampling_handler: Async callback for sampling requests (server asks client for LLM).
+        elicitation_handler: Async callback for elicitation requests (server asks client for user input).
+        client_session_timeout_seconds: Timeout for client session.
     """
 
     def __init__(
         self,
         address: str,
         allowed_tools: list[str] | None = None,
+        sampling_handler=None,
+        elicitation_handler=None,
         client_session_timeout_seconds: float = 30,
     ) -> None:
         super().__init__(client_session_timeout_seconds=client_session_timeout_seconds)
         self._address = address
         self._grpc_client = McpClient(address)
         self._allowed_tools = set(allowed_tools) if allowed_tools else None
+        self._sampling_handler = sampling_handler
+        self._elicitation_handler = elicitation_handler
         self._connected = False
 
     @property
@@ -57,6 +68,10 @@ class MCPServerGRPC(MCPServer):
     async def initialize(self) -> None:
         if self._connected:
             return
+        if self._sampling_handler:
+            self._grpc_client.set_sampling_handler(self._sampling_handler)
+        if self._elicitation_handler:
+            self._grpc_client.set_elicitation_handler(self._elicitation_handler)
         await self._grpc_client.connect()
         self._connected = True
         logger.info(f"MCPServerGRPC connected to {self._address}")
