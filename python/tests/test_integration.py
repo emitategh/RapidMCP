@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 import pytest
 
@@ -208,3 +209,40 @@ async def test_grpc_sampling_without_capability():
             result = await client.call_tool("try_sample", {"text": "hi"})
             assert result.is_error
             assert "sampling" in result.content[0].text.lower()
+
+
+@pytest.mark.asyncio
+async def test_grpc_ctx_logging_and_progress():
+    """Tool calls ctx.info() and ctx.report_progress(); client receives notifications."""
+    server = FasterMCP(name="log-server", version="0.1")
+
+    @server.tool()
+    async def tracked_tool(text: str, ctx: Context) -> str:
+        """A tool that logs and reports progress."""
+        await ctx.info("starting", extra={"input": text})
+        await ctx.report_progress(progress=50, total=100)
+        await ctx.info("done")
+        return text
+
+    log_received = []
+    progress_received = []
+
+    async with server:
+        async with Client(f"localhost:{server.port}") as client:
+            client.on_notification("log", lambda p: log_received.append(json.loads(p)))
+            client.on_notification("progress", lambda p: progress_received.append(json.loads(p)))
+            result = await client.call_tool("tracked_tool", {"text": "hello"})
+            await asyncio.sleep(0.2)
+
+            assert result.content[0].text == "hello"
+            assert not result.is_error
+
+            assert len(log_received) == 2
+            assert log_received[0]["level"] == "info"
+            assert log_received[0]["message"] == "starting"
+            assert log_received[0]["extra"] == {"input": "hello"}
+            assert log_received[1]["message"] == "done"
+
+            assert len(progress_received) == 1
+            assert progress_received[0]["progress"] == 50
+            assert progress_received[0]["total"] == 100
