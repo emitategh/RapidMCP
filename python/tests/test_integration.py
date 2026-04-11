@@ -293,3 +293,56 @@ async def test_grpc_completions_roundtrip():
             assert result.values == ["london"]
             assert result.total == 1
             assert not result.has_more
+
+
+@pytest.mark.asyncio
+async def test_grpc_list_tools_all_returned():
+    """Registering 5 tools: list_tools returns all 5 at once; next_cursor is None."""
+    server = FasterMCP(name="paginate-server", version="0.1")
+
+    @server.tool(description="Tool alpha")
+    async def alpha() -> str:
+        return "alpha"
+
+    @server.tool(description="Tool beta")
+    async def beta() -> str:
+        return "beta"
+
+    @server.tool(description="Tool gamma")
+    async def gamma() -> str:
+        return "gamma"
+
+    @server.tool(description="Tool delta")
+    async def delta() -> str:
+        return "delta"
+
+    @server.tool(description="Tool epsilon")
+    async def epsilon() -> str:
+        return "epsilon"
+
+    async with server:
+        async with Client(f"localhost:{server.port}") as client:
+            result = await client.list_tools()
+            assert len(result.items) == 5
+            names = {t.name for t in result.items}
+            assert names == {"alpha", "beta", "gamma", "delta", "epsilon"}
+            assert result.next_cursor is None
+
+
+@pytest.mark.asyncio
+async def test_grpc_cancel_no_crash():
+    """Cancelling a non-existent request_id is silently ignored; subsequent calls succeed."""
+    server = FasterMCP(name="cancel-server", version="0.1")
+
+    @server.tool(description="Echo")
+    async def echo(text: str) -> str:
+        return text
+
+    async with server:
+        async with Client(f"localhost:{server.port}") as client:
+            # Send a cancel for a request_id that has never existed
+            await client.cancel(9999)
+            # Server must still be operational
+            result = await client.call_tool("echo", {"text": "still works"})
+            assert result.content[0].text == "still works"
+            assert not result.is_error
