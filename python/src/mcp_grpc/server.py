@@ -147,6 +147,16 @@ class Context:
         """Send an error-level log to this session's client."""
         await self._log("error", message, extra)
 
+    async def report_progress(self, progress: float, total: float | None = None) -> None:
+        """Report progress to this session's client."""
+        await self._write_queue.put(mcp_pb2.ServerEnvelope(
+            request_id=0,
+            notification=mcp_pb2.ServerNotification(
+                type=mcp_pb2.ServerNotification.PROGRESS,
+                payload=json.dumps({"progress": progress, "total": total}),
+            ),
+        ))
+
 
 def _build_input_schema(fn: Callable) -> str:
     """Build a JSON Schema from function type hints."""
