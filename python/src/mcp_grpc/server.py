@@ -1,4 +1,4 @@
-"""McpServer: register tools, resources, prompts and serve them over gRPC."""
+"""FasterMCP: register tools, resources, prompts and serve them over gRPC."""
 from __future__ import annotations
 
 import asyncio
@@ -56,7 +56,7 @@ class RegisteredCompletion:
     handler: Callable[..., Awaitable[list[str]]]
 
 
-class ToolContext:
+class Context:
     """Provides sampling and elicitation to tool handlers via dependency injection."""
 
     def __init__(
@@ -132,7 +132,7 @@ def _build_input_schema(fn: Callable) -> str:
 
     for param_name, param in sig.parameters.items():
         annotation = param.annotation
-        if annotation is ToolContext:
+        if annotation is Context:
             continue  # skip DI parameters
         json_type = type_map.get(annotation, "string")
         properties[param_name] = {"type": json_type}
@@ -148,7 +148,7 @@ def _build_input_schema(fn: Callable) -> str:
 class _McpServicer(mcp_pb2_grpc.McpServicer):
     """Handles bidi Session stream with concurrent reader/writer."""
 
-    def __init__(self, server: McpServer) -> None:
+    def __init__(self, server: FasterMCP) -> None:
         self._server = server
 
     async def Session(self, request_iterator, context):
@@ -210,7 +210,7 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                             tool = self._server._tools.get(_req.name)
                             ctx = None
                             if tool and tool.needs_context:
-                                ctx = ToolContext(
+                                ctx = Context(
                                     client_capabilities=client_capabilities,
                                     pending=server_pending,
                                     write_queue=write_queue,
@@ -390,7 +390,7 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                 pass
 
 
-class McpServer:
+class FasterMCP:
     """Register tools, resources, and prompts, then serve over gRPC."""
 
     def __init__(self, name: str, version: str) -> None:
@@ -409,7 +409,7 @@ class McpServer:
         def decorator(fn: Callable) -> Callable:
             sig = inspect.signature(fn)
             needs_ctx = any(
-                p.annotation is ToolContext
+                p.annotation is Context
                 for p in sig.parameters.values()
             )
             self._tools[fn.__name__] = RegisteredTool(
@@ -541,7 +541,7 @@ class McpServer:
         ))
 
     async def handle_call_tool(
-        self, name: str, arguments_json: str, context: ToolContext | None = None,
+        self, name: str, arguments_json: str, context: Context | None = None,
     ) -> mcp_pb2.CallToolResponse:
         tool = self._tools.get(name)
         if not tool:
@@ -550,7 +550,7 @@ class McpServer:
         if tool.needs_context and context is not None:
             sig = inspect.signature(tool.handler)
             for param_name, param in sig.parameters.items():
-                if param.annotation is ToolContext:
+                if param.annotation is Context:
                     args[param_name] = context
                     break
         try:
@@ -587,7 +587,7 @@ class McpServer:
 
         async def _run():
             grpc_server = await self._start_grpc(port)
-            print(f"McpServer '{self.name}' listening on port {self._port}", flush=True)
+            print(f"FasterMCP '{self.name}' listening on port {self._port}", flush=True)
             await grpc_server.wait_for_termination()
 
         asyncio.run(_run())
