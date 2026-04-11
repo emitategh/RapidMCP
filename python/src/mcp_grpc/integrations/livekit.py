@@ -1,17 +1,17 @@
-"""LiveKit integration — MCPToolsetGRPC adapter for livekit-agents.
+"""LiveKit integration — MCPServerGRPC for livekit-agents.
 
-MCPToolsetGRPC is a livekit ``Toolset`` backed by a FasterMCP gRPC server.
-It owns the ``Client`` lifecycle and is the gRPC counterpart to livekit's
-built-in ``MCPToolset(MCPServerHTTP(url=...))``.
+MCPServerGRPC is a livekit ``MCPServer`` backed by a FasterMCP gRPC server.
+It is the gRPC counterpart to ``MCPServerHTTP`` and is used with the standard
+``MCPToolset``.
 
 Usage::
 
     from livekit.agents.llm.mcp import MCPToolset, MCPServerHTTP
-    from mcp_grpc.integrations.livekit import MCPToolsetGRPC
+    from mcp_grpc.integrations.livekit import MCPServerGRPC
 
     session = AgentSession(
         tools=[
-            MCPToolsetGRPC(address="mcp-server:50051"),
+            MCPToolset(id="grpc-tools", mcp_server=MCPServerGRPC(address="mcp-server:50051")),
             MCPToolset(id="http-tools", mcp_server=MCPServerHTTP(url="http://...")),
         ],
         ...
@@ -22,6 +22,7 @@ Requires: pip install livekit-agents
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 from typing import Any
@@ -31,8 +32,8 @@ from mcp_grpc.client import Client
 logger = logging.getLogger(__name__)
 
 try:
-    from livekit.agents.llm.tool_context import ToolError, Toolset, function_tool
-    from typing_extensions import Self
+    from livekit.agents.llm.mcp import MCPServer, MCPTool
+    from livekit.agents.llm.tool_context import ToolError, function_tool
 except ImportError as e:
     raise ImportError(
         "livekit-agents is required for the LiveKit integration.\n"
@@ -40,16 +41,16 @@ except ImportError as e:
     ) from e
 
 
-class MCPToolsetGRPC(Toolset):
-    """LiveKit Toolset backed by a FasterMCP gRPC server.
+class MCPServerGRPC(MCPServer):
+    """gRPC-backed MCPServer for livekit-agents.
 
-    Owns the ``Client`` connection lifecycle: connects on ``setup()``,
-    closes on ``aclose()``. Tools are fetched once on setup and cached.
+    Use with the standard ``MCPToolset``:
+
+        MCPToolset(id="grpc-tools", mcp_server=MCPServerGRPC(address="mcp-server:50051"))
 
     Args:
         address: gRPC server address, e.g. ``"mcp-server:50051"``.
         allowed_tools: Optional allowlist of tool names. ``None`` = all tools.
-        id: Toolset ID (defaults to the server address).
     """
 
     def __init__(
@@ -57,30 +58,36 @@ class MCPToolsetGRPC(Toolset):
         address: str,
         *,
         allowed_tools: list[str] | None = None,
-        id: str | None = None,
+        client_session_timeout_seconds: float = 30,
     ) -> None:
-        super().__init__(id=id or f"grpc:{address}")
+        super().__init__(client_session_timeout_seconds=client_session_timeout_seconds)
         self._address = address
-        self._allowed = set(allowed_tools) if allowed_tools else None
-        self._client = Client(address)
+        self._grpc_client = Client(address)
+        self._allowed_tools = set(allowed_tools) if allowed_tools else None
+        self._connected = False
 
-    async def setup(self, *, reload: bool = False) -> Self:
-        await super().setup()
-        if self._tools and not reload:
-            return self
+    @property
+    def initialized(self) -> bool:
+        return self._connected
 
-        await self._client.connect()
-        result = await self._client.list_tools()
+    async def initialize(self) -> None:
+        if self._connected:
+            return
+        await self._grpc_client.connect()
+        self._connected = True
+        logger.info("MCPServerGRPC connected to %s", self._address)
 
-        tools = []
+    async def list_tools(self) -> list[MCPTool]:
+        result = await self._grpc_client.list_tools()
+        tools: list[MCPTool] = []
         for t in result.items:
-            if self._allowed and t.name not in self._allowed:
+            if self._allowed_tools and t.name not in self._allowed_tools:
                 continue
             schema = json.loads(t.input_schema) if t.input_schema else {}
             _name, _desc = t.name, t.description
 
             async def _call(raw_arguments: dict[str, Any], _n: str = _name) -> str:
-                tool_result = await self._client.call_tool(_n, raw_arguments)
+                tool_result = await self._grpc_client.call_tool(_n, raw_arguments)
                 if tool_result.is_error:
                     raise ToolError(
                         "\n".join(i.text for i in tool_result.content if i.text)
@@ -99,18 +106,26 @@ class MCPToolsetGRPC(Toolset):
                 "parameters": schema,
             }))
 
-        self._tools = tools
+        self._lk_tools = tools
+        self._cache_dirty = False
         logger.info(
-            "MCPToolsetGRPC connected to %s — %d tool(s): %s",
+            "MCPServerGRPC %s — %d tool(s): %s",
             self._address, len(tools), [t.name for t in result.items],
         )
-        return self
+        return tools
 
     async def aclose(self) -> None:
-        await super().aclose()
-        await self._client.close()
-        logger.info("MCPToolsetGRPC disconnected from %s", self._address)
+        self._connected = False
+        await self._grpc_client.close()
+        logger.info("MCPServerGRPC disconnected from %s", self._address)
+
+    @contextlib.asynccontextmanager
+    async def client_streams(self):  # type: ignore[override]
+        # Never called — initialize() and list_tools() bypass the JSON-RPC path.
+        # Implemented only to satisfy the abstract base class requirement.
+        raise NotImplementedError("MCPServerGRPC uses gRPC transport, not client_streams")
+        yield  # pragma: no cover
 
     def __repr__(self) -> str:
-        allowed = f", allowed={list(self._allowed)}" if self._allowed else ""
-        return f"MCPToolsetGRPC(address={self._address!r}{allowed})"
+        allowed = f", allowed_tools={list(self._allowed_tools)}" if self._allowed_tools else ""
+        return f"MCPServerGRPC(address={self._address!r}{allowed})"

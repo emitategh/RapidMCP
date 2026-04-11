@@ -39,7 +39,7 @@ from mcp_grpc import (
     EnumField, FloatField, IntField, StringField, build_elicitation_schema,
 )
 from mcp_grpc.errors import McpError, ToolError
-from mcp_grpc.integrations.livekit import MCPToolsetGRPC  # livekit-agents Toolset adapter
+from mcp_grpc.integrations.livekit import MCPServerGRPC  # livekit-agents MCPServer adapter
 ```
 
 ## Project structure
