@@ -2,11 +2,11 @@ import json
 
 import pytest
 
-from mcp_grpc.server import McpServer
+from mcp_grpc.server import FasterMCP
 
 
 def test_register_tool():
-    server = McpServer(name="test", version="0.1")
+    server = FasterMCP(name="test", version="0.1")
 
     @server.tool(description="Echo text back")
     async def echo(text: str) -> str:
@@ -20,7 +20,7 @@ def test_register_tool():
 
 
 def test_register_resource():
-    server = McpServer(name="test", version="0.1")
+    server = FasterMCP(name="test", version="0.1")
 
     @server.resource(uri="res://config", description="App config")
     async def config() -> str:
@@ -32,7 +32,7 @@ def test_register_resource():
 
 
 def test_register_prompt():
-    server = McpServer(name="test", version="0.1")
+    server = FasterMCP(name="test", version="0.1")
 
     @server.prompt(description="Greet the user")
     async def greet(name: str) -> str:
@@ -44,7 +44,7 @@ def test_register_prompt():
 
 
 def test_register_resource_template():
-    server = McpServer(name="test", version="0.1")
+    server = FasterMCP(name="test", version="0.1")
 
     @server.resource_template(
         uri_template="file:///{path}",
@@ -61,7 +61,7 @@ def test_register_resource_template():
 
 @pytest.mark.asyncio
 async def test_call_tool_handler():
-    server = McpServer(name="test", version="0.1")
+    server = FasterMCP(name="test", version="0.1")
 
     @server.tool(description="Echo text back")
     async def echo(text: str) -> str:
@@ -74,7 +74,7 @@ async def test_call_tool_handler():
 
 @pytest.mark.asyncio
 async def test_call_unknown_tool():
-    server = McpServer(name="test", version="0.1")
+    server = FasterMCP(name="test", version="0.1")
 
     from mcp_grpc.errors import McpError
 
@@ -84,12 +84,12 @@ async def test_call_unknown_tool():
 
 def test_tool_context_excluded_from_schema():
     """ToolContext parameter should not appear in input_schema."""
-    from mcp_grpc.server import ToolContext
+    from mcp_grpc.server import Context
 
-    server = McpServer(name="test", version="0.1")
+    server = FasterMCP(name="test", version="0.1")
 
     @server.tool(description="Summarize with LLM")
-    async def summarize(text: str, ctx: ToolContext) -> str:
+    async def summarize(text: str, ctx: Context) -> str:
         return text
 
     tools = server.list_registered_tools()
@@ -101,7 +101,7 @@ def test_tool_context_excluded_from_schema():
 
 
 def test_tool_without_context_has_no_needs_context():
-    server = McpServer(name="test", version="0.1")
+    server = FasterMCP(name="test", version="0.1")
 
     @server.tool(description="Echo")
     async def echo(text: str) -> str:
@@ -115,21 +115,21 @@ def test_tool_without_context_has_no_needs_context():
 async def test_tool_context_injection():
     """Tool handler receives a ToolContext when type-hinted."""
     import asyncio
-    from mcp_grpc.server import ToolContext
+    from mcp_grpc.server import Context
     from mcp_grpc._generated import mcp_pb2
     from mcp_grpc.session import PendingRequests
 
-    server = McpServer(name="test", version="0.1")
+    server = FasterMCP(name="test", version="0.1")
     received_ctx = []
 
     @server.tool(description="Check ctx")
-    async def check_ctx(text: str, ctx: ToolContext) -> str:
+    async def check_ctx(text: str, ctx: Context) -> str:
         received_ctx.append(ctx)
         return text
 
     result = await server.handle_call_tool(
         "check_ctx", '{"text": "hello"}',
-        context=ToolContext(
+        context=Context(
             client_capabilities=mcp_pb2.ClientCapabilities(),
             pending=PendingRequests(),
             write_queue=asyncio.Queue(),
@@ -137,4 +137,4 @@ async def test_tool_context_injection():
     )
     assert result.content[0].text == "hello"
     assert len(received_ctx) == 1
-    assert isinstance(received_ctx[0], ToolContext)
+    assert isinstance(received_ctx[0], Context)
