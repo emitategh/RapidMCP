@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 import logging
 import traceback
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from functools import partial
 from typing import Any
 
@@ -22,7 +22,7 @@ from mcp_grpc.tools.tool import (
     _resolve_hints,
 )
 
-logger = logging.getLogger("mcp_grpc.server")
+logger = logging.getLogger(__name__)
 
 
 class ToolManager:

@@ -4,6 +4,7 @@ __version__ = "0.1.0"
 
 from mcp_grpc.client import Client, ListResult
 from mcp_grpc.content import Audio, Image
+from mcp_grpc.context import Context
 from mcp_grpc.elicitation import (
     BoolField,
     ElicitationField,
@@ -23,7 +24,6 @@ from mcp_grpc.middleware import (
     ToolCallContext,
     ValidationMiddleware,
 )
-from mcp_grpc.context import Context
 from mcp_grpc.server import FasterMCP
 from mcp_grpc.tools import ToolAnnotations
 

@@ -14,12 +14,11 @@ from grpc import aio as grpc_aio
 
 from mcp_grpc._generated import mcp_pb2, mcp_pb2_grpc
 from mcp_grpc._utils import _paginate, _prefix_resource_uri
-from mcp_grpc.content import Audio, Image
 from mcp_grpc.context import Context
 from mcp_grpc.errors import McpError
 from mcp_grpc.middleware import Middleware
 from mcp_grpc.session import PendingRequests
-from mcp_grpc.tools import RegisteredTool, ToolAnnotations, ToolManager
+from mcp_grpc.tools import RegisteredTool, ToolManager
 
 logger = logging.getLogger("mcp_grpc.server")
 
