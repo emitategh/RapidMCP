@@ -128,22 +128,24 @@ async def test_grpc_sampling_roundtrip():
     @server.tool(description="Summarize with LLM")
     async def summarize(text: str, ctx: Context) -> str:
         result = await ctx.sample(
-            messages=[mcp_pb2.SamplingMessage(
-                role="user",
-                content=mcp_pb2.ContentItem(type="text", text=f"Summarize: {text}"),
-            )],
+            messages=[
+                mcp_pb2.SamplingMessage(
+                    role="user",
+                    content=[mcp_pb2.ContentItem(type="text", text=f"Summarize: {text}")],
+                )
+            ],
             max_tokens=100,
         )
-        return result.content.text
+        return result.content[0].text
 
     async with server:
         client = Client(f"localhost:{server.port}")
 
         async def sampling_handler(request):
-            prompt_text = request.messages[0].content.text
+            prompt_text = request.messages[0].content[0].text
             return mcp_pb2.SamplingResponse(
                 role="assistant",
-                content=mcp_pb2.ContentItem(type="text", text=f"Summary of: {prompt_text}"),
+                content=[mcp_pb2.ContentItem(type="text", text=f"Summary of: {prompt_text}")],
                 model="test-model",
                 stop_reason="end",
             )
@@ -393,10 +395,12 @@ async def test_grpc_roots_roundtrip():
         client = Client(f"localhost:{server.port}")
 
         async def roots_handler() -> mcp_pb2.ListRootsResponse:
-            return mcp_pb2.ListRootsResponse(roots=[
-                mcp_pb2.Root(uri="file:///home/user/project", name="project"),
-                mcp_pb2.Root(uri="file:///home/user/docs", name="docs"),
-            ])
+            return mcp_pb2.ListRootsResponse(
+                roots=[
+                    mcp_pb2.Root(uri="file:///home/user/project", name="project"),
+                    mcp_pb2.Root(uri="file:///home/user/docs", name="docs"),
+                ]
+            )
 
         client.set_roots_handler(roots_handler)
         await client.connect()

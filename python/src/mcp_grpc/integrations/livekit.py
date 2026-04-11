@@ -10,9 +10,9 @@ Usage:
 
 Requires: pip install livekit-agents
 """
+
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 from typing import Any
@@ -22,7 +22,7 @@ from mcp_grpc.client import Client
 logger = logging.getLogger(__name__)
 
 try:
-    from livekit.agents.llm.mcp import MCPServer, MCPTool, MCPToolResultContext
+    from livekit.agents.llm.mcp import MCPServer, MCPTool
     from livekit.agents.llm.tool_context import ToolError, function_tool
 except ImportError as e:
     raise ImportError(
@@ -93,6 +93,7 @@ class MCPServerGRPC(MCPServer):
 
             async def _tool_called(raw_arguments: dict[str, Any], _name: str = name) -> str:
                 import time
+
                 if not self._connected:
                     raise ToolError(
                         "Tool invocation failed: gRPC connection is closed. "
@@ -105,30 +106,28 @@ class MCPServerGRPC(MCPServer):
                 logger.info(f"[gRPC] {_name} — {ms:.2f}ms")
 
                 if tool_result.is_error:
-                    error_str = "\n".join(
-                        item.text for item in tool_result.content if item.text
-                    )
+                    error_str = "\n".join(item.text for item in tool_result.content if item.text)
                     raise ToolError(error_str)
 
                 if not tool_result.content:
-                    raise ToolError(
-                        f"Tool '{_name}' completed without producing a result."
-                    )
+                    raise ToolError(f"Tool '{_name}' completed without producing a result.")
 
                 if len(tool_result.content) == 1:
                     return tool_result.content[0].text
-                return json.dumps([
-                    {"type": item.type, "text": item.text} for item in tool_result.content
-                ])
+                return json.dumps(
+                    [{"type": item.type, "text": item.text} for item in tool_result.content]
+                )
 
-            tools.append(function_tool(
-                _tool_called,
-                raw_schema={
-                    "name": name,
-                    "description": description,
-                    "parameters": schema,
-                },
-            ))
+            tools.append(
+                function_tool(
+                    _tool_called,
+                    raw_schema={
+                        "name": name,
+                        "description": description,
+                        "parameters": schema,
+                    },
+                )
+            )
 
         self._lk_tools = tools
         self._cache_dirty = False

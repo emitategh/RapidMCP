@@ -115,8 +115,9 @@ def test_tool_without_context_has_no_needs_context():
 async def test_tool_context_injection():
     """Tool handler receives a Context when type-hinted."""
     import asyncio
-    from mcp_grpc.server import Context
+
     from mcp_grpc._generated import mcp_pb2
+    from mcp_grpc.server import Context
     from mcp_grpc.session import PendingRequests
 
     server = FasterMCP(name="test", version="0.1")
@@ -128,7 +129,8 @@ async def test_tool_context_injection():
         return text
 
     result = await server.handle_call_tool(
-        "check_ctx", '{"text": "hello"}',
+        "check_ctx",
+        '{"text": "hello"}',
         context=Context(
             client_capabilities=mcp_pb2.ClientCapabilities(),
             pending=PendingRequests(),
@@ -237,9 +239,11 @@ def test_prompt_explicit_description_overrides_docstring():
 
 @pytest.mark.asyncio
 async def test_ctx_info_puts_log_notification():
-    import asyncio, json
-    from mcp_grpc.server import Context
+    import asyncio
+    import json
+
     from mcp_grpc._generated import mcp_pb2
+    from mcp_grpc.server import Context
     from mcp_grpc.session import PendingRequests
 
     queue = asyncio.Queue()
@@ -261,9 +265,11 @@ async def test_ctx_info_puts_log_notification():
 
 @pytest.mark.asyncio
 async def test_ctx_debug_puts_correct_level():
-    import asyncio, json
-    from mcp_grpc.server import Context
+    import asyncio
+    import json
+
     from mcp_grpc._generated import mcp_pb2
+    from mcp_grpc.server import Context
     from mcp_grpc.session import PendingRequests
 
     queue = asyncio.Queue()
@@ -279,9 +285,11 @@ async def test_ctx_debug_puts_correct_level():
 
 @pytest.mark.asyncio
 async def test_ctx_warning_puts_correct_level():
-    import asyncio, json
-    from mcp_grpc.server import Context
+    import asyncio
+    import json
+
     from mcp_grpc._generated import mcp_pb2
+    from mcp_grpc.server import Context
     from mcp_grpc.session import PendingRequests
 
     queue = asyncio.Queue()
@@ -297,9 +305,11 @@ async def test_ctx_warning_puts_correct_level():
 
 @pytest.mark.asyncio
 async def test_ctx_error_puts_correct_level():
-    import asyncio, json
-    from mcp_grpc.server import Context
+    import asyncio
+    import json
+
     from mcp_grpc._generated import mcp_pb2
+    from mcp_grpc.server import Context
     from mcp_grpc.session import PendingRequests
 
     queue = asyncio.Queue()
@@ -315,9 +325,11 @@ async def test_ctx_error_puts_correct_level():
 
 @pytest.mark.asyncio
 async def test_ctx_info_with_extra():
-    import asyncio, json
-    from mcp_grpc.server import Context
+    import asyncio
+    import json
+
     from mcp_grpc._generated import mcp_pb2
+    from mcp_grpc.server import Context
     from mcp_grpc.session import PendingRequests
 
     queue = asyncio.Queue()
@@ -333,9 +345,11 @@ async def test_ctx_info_with_extra():
 
 @pytest.mark.asyncio
 async def test_ctx_debug_with_extra():
-    import asyncio, json
-    from mcp_grpc.server import Context
+    import asyncio
+    import json
+
     from mcp_grpc._generated import mcp_pb2
+    from mcp_grpc.server import Context
     from mcp_grpc.session import PendingRequests
 
     queue = asyncio.Queue()
@@ -352,9 +366,11 @@ async def test_ctx_debug_with_extra():
 
 @pytest.mark.asyncio
 async def test_ctx_report_progress_with_total():
-    import asyncio, json
-    from mcp_grpc.server import Context
+    import asyncio
+    import json
+
     from mcp_grpc._generated import mcp_pb2
+    from mcp_grpc.server import Context
     from mcp_grpc.session import PendingRequests
 
     queue = asyncio.Queue()
@@ -375,9 +391,11 @@ async def test_ctx_report_progress_with_total():
 
 @pytest.mark.asyncio
 async def test_ctx_report_progress_without_total():
-    import asyncio, json
-    from mcp_grpc.server import Context
+    import asyncio
+    import json
+
     from mcp_grpc._generated import mcp_pb2
+    from mcp_grpc.server import Context
     from mcp_grpc.session import PendingRequests
 
     queue = asyncio.Queue()

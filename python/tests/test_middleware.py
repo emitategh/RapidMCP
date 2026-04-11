@@ -1,13 +1,12 @@
 """Unit tests for middleware core types (no gRPC required)."""
-from __future__ import annotations
 
-import asyncio
+from __future__ import annotations
 
 import pytest
 
+from mcp_grpc import Client, FasterMCP
 from mcp_grpc._generated import mcp_pb2
 from mcp_grpc.middleware import CallNext, Middleware, ToolCallContext
-from mcp_grpc import Client, FasterMCP
 
 
 def _ok(text: str) -> mcp_pb2.CallToolResponse:
@@ -86,8 +85,7 @@ async def test_middleware_can_modify_arguments():
             modified = ToolCallContext(
                 tool_name=tool_ctx.tool_name,
                 arguments={
-                    k: v.upper() if isinstance(v, str) else v
-                    for k, v in tool_ctx.arguments.items()
+                    k: v.upper() if isinstance(v, str) else v for k, v in tool_ctx.arguments.items()
                 },
                 ctx=tool_ctx.ctx,
             )
@@ -190,6 +188,7 @@ async def test_no_middleware_unchanged():
 async def test_timing_middleware_logs(caplog):
     """TimingMiddleware logs tool name and elapsed time in milliseconds."""
     import logging as _logging
+
     from mcp_grpc.middleware import TimingMiddleware
 
     server = FasterMCP(name="timing-server", version="0.1", middleware=[TimingMiddleware()])
@@ -211,6 +210,7 @@ async def test_timing_middleware_logs(caplog):
 async def test_timing_middleware_custom_logger(caplog):
     """TimingMiddleware accepts a custom logger."""
     import logging as _logging
+
     from mcp_grpc.middleware import TimingMiddleware
 
     custom = _logging.getLogger("my.timer")
@@ -233,9 +233,236 @@ async def test_timing_middleware_custom_logger(caplog):
 
 
 @pytest.mark.asyncio
+async def test_tool_call_context_carries_input_schema():
+    """ToolCallContext.input_schema is populated from the registered tool schema."""
+    received: list = []
+
+    class SchemaCapture(Middleware):
+        async def on_tool_call(
+            self, tool_ctx: ToolCallContext, call_next: CallNext
+        ) -> mcp_pb2.CallToolResponse:
+            received.append(tool_ctx.input_schema)
+            return await call_next(tool_ctx)
+
+    server = FasterMCP(name="schema-server", version="0.1", middleware=[SchemaCapture()])
+
+    @server.tool(description="Add two numbers")
+    async def add(a: int, b: int) -> str:
+        return str(a + b)
+
+    async with server:
+        async with Client(f"localhost:{server.port}") as client:
+            await client.call_tool("add", {"a": 1, "b": 2})
+
+    assert len(received) == 1
+    schema = received[0]
+    assert schema is not None
+    assert "properties" in schema
+    assert "a" in schema["properties"]
+    assert "b" in schema["properties"]
+
+
+# ── TimeoutMiddleware ────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_timeout_middleware_fires_on_slow_tool():
+    """TimeoutMiddleware returns is_error=True when the tool exceeds the deadline."""
+    import asyncio as _asyncio
+
+    from mcp_grpc.middleware import TimeoutMiddleware
+
+    server = FasterMCP(
+        name="timeout-server",
+        version="0.1",
+        middleware=[TimeoutMiddleware(default_timeout=0.05)],
+    )
+
+    @server.tool(description="Slow tool")
+    async def slow() -> str:
+        await _asyncio.sleep(10)
+        return "done"
+
+    async with server:
+        async with Client(f"localhost:{server.port}") as client:
+            result = await client.call_tool("slow", {})
+
+    assert result.is_error
+    assert "timed out" in result.content[0].text
+    assert "slow" in result.content[0].text
+
+
+@pytest.mark.asyncio
+async def test_timeout_middleware_passes_fast_tool():
+    """TimeoutMiddleware lets fast tools through unchanged."""
+    from mcp_grpc.middleware import TimeoutMiddleware
+
+    server = FasterMCP(
+        name="timeout-pass-server",
+        version="0.1",
+        middleware=[TimeoutMiddleware(default_timeout=5.0)],
+    )
+
+    @server.tool(description="Fast tool")
+    async def fast() -> str:
+        return "ok"
+
+    async with server:
+        async with Client(f"localhost:{server.port}") as client:
+            result = await client.call_tool("fast", {})
+
+    assert not result.is_error
+    assert result.content[0].text == "ok"
+
+
+@pytest.mark.asyncio
+async def test_timeout_middleware_per_tool_override():
+    """per_tool dict overrides the default timeout for named tools."""
+    import asyncio as _asyncio
+
+    from mcp_grpc.middleware import TimeoutMiddleware
+
+    server = FasterMCP(
+        name="timeout-per-tool-server",
+        version="0.1",
+        middleware=[TimeoutMiddleware(default_timeout=0.05, per_tool={"privileged": 10.0})],
+    )
+
+    @server.tool(description="Privileged slow tool")
+    async def privileged() -> str:
+        await _asyncio.sleep(0.1)  # slower than default but within per_tool budget
+        return "privileged done"
+
+    @server.tool(description="Normal slow tool")
+    async def normal() -> str:
+        await _asyncio.sleep(0.1)  # exceeds default timeout
+        return "normal done"
+
+    async with server:
+        async with Client(f"localhost:{server.port}") as client:
+            priv_result = await client.call_tool("privileged", {})
+            norm_result = await client.call_tool("normal", {})
+
+    assert not priv_result.is_error
+    assert priv_result.content[0].text == "privileged done"
+    assert norm_result.is_error
+    assert "timed out" in norm_result.content[0].text
+
+
+# ── ValidationMiddleware ─────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_validation_middleware_missing_required():
+    """ValidationMiddleware returns is_error=True when a required arg is absent."""
+    from mcp_grpc.middleware import ValidationMiddleware
+
+    server = FasterMCP(
+        name="val-missing-server",
+        version="0.1",
+        middleware=[ValidationMiddleware()],
+    )
+
+    @server.tool(description="Greet")
+    async def greet(name: str) -> str:
+        return f"Hello, {name}!"
+
+    async with server:
+        async with Client(f"localhost:{server.port}") as client:
+            result = await client.call_tool("greet", {})  # missing 'name'
+
+    assert result.is_error
+    assert "name" in result.content[0].text
+    assert "missing" in result.content[0].text.lower()
+
+
+@pytest.mark.asyncio
+async def test_validation_middleware_unknown_arg():
+    """ValidationMiddleware returns is_error=True when an unknown arg is passed."""
+    from mcp_grpc.middleware import ValidationMiddleware
+
+    server = FasterMCP(
+        name="val-unknown-server",
+        version="0.1",
+        middleware=[ValidationMiddleware()],
+    )
+
+    @server.tool(description="Greet")
+    async def greet(name: str) -> str:
+        return f"Hello, {name}!"
+
+    async with server:
+        async with Client(f"localhost:{server.port}") as client:
+            result = await client.call_tool("greet", {"name": "Alice", "extra": "bad"})
+
+    assert result.is_error
+    assert "extra" in result.content[0].text
+    assert "unknown" in result.content[0].text.lower()
+
+
+@pytest.mark.asyncio
+async def test_validation_middleware_valid_passes():
+    """ValidationMiddleware forwards valid calls to the handler unchanged."""
+    from mcp_grpc.middleware import ValidationMiddleware
+
+    server = FasterMCP(
+        name="val-pass-server",
+        version="0.1",
+        middleware=[ValidationMiddleware()],
+    )
+
+    @server.tool(description="Add")
+    async def add(a: int, b: int) -> str:
+        return str(a + b)
+
+    async with server:
+        async with Client(f"localhost:{server.port}") as client:
+            result = await client.call_tool("add", {"a": 1, "b": 2})
+
+    assert not result.is_error
+    assert result.content[0].text == "3"
+
+
+@pytest.mark.asyncio
+async def test_validation_middleware_no_schema_passes_through():
+    """ValidationMiddleware skips validation when input_schema is None."""
+    from mcp_grpc.middleware import ValidationMiddleware
+
+    # Manually inject None schema via a wrapping middleware
+    class NullifySchema(Middleware):
+        async def on_tool_call(
+            self, tool_ctx: ToolCallContext, call_next: CallNext
+        ) -> mcp_pb2.CallToolResponse:
+            from dataclasses import replace as dc_replace
+
+            return await call_next(dc_replace(tool_ctx, input_schema=None))
+
+    server = FasterMCP(
+        name="val-noschema-server",
+        version="0.1",
+        middleware=[NullifySchema(), ValidationMiddleware()],
+    )
+
+    @server.tool(description="Echo")
+    async def echo(text: str) -> str:
+        return text
+
+    async with server:
+        async with Client(f"localhost:{server.port}") as client:
+            # Even with bad args, ValidationMiddleware skips when schema is None
+            result = await client.call_tool("echo", {"text": "hi"})
+
+    assert not result.is_error
+
+
+# ── LoggingMiddleware (existing) ─────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
 async def test_logging_middleware_logs_tool(caplog):
     """LoggingMiddleware logs tool name and args before, and is_error status after."""
     import logging as _logging
+
     from mcp_grpc.middleware import LoggingMiddleware
 
     server = FasterMCP(name="logmw-server", version="0.1", middleware=[LoggingMiddleware()])

@@ -1,4 +1,5 @@
 """Client: connect to an MCP gRPC server, discover and call tools."""
+
 from __future__ import annotations
 
 import asyncio
@@ -17,6 +18,7 @@ from mcp_grpc.session import NotificationRegistry, PendingRequests
 @dataclass
 class ListResult:
     """Result from a paginated list method."""
+
     items: list
     next_cursor: str | None
 
@@ -42,6 +44,7 @@ class Client:
         self._sampling_handler = None
         self._elicitation_handler = None
         self._roots_handler = None
+        self._background_tasks: set[asyncio.Task] = set()
 
     def set_sampling_handler(self, handler) -> None:
         self._sampling_handler = handler
@@ -87,11 +90,15 @@ class Client:
                 elif msg_type == "notification":
                     notif = envelope.notification
                     type_name = mcp_pb2.ServerNotification.Type.Name(notif.type).lower()
-                    asyncio.create_task(
+                    task = asyncio.create_task(
                         self._notifications.dispatch(type_name, notif.payload)
                     )
+                    self._background_tasks.add(task)
+                    task.add_done_callback(self._background_tasks.discard)
                 elif msg_type in ("sampling", "elicitation", "roots_request"):
-                    asyncio.create_task(self._handle_server_request(envelope))
+                    task = asyncio.create_task(self._handle_server_request(envelope))
+                    self._background_tasks.add(task)
+                    task.add_done_callback(self._background_tasks.discard)
                 else:
                     inner = getattr(envelope, msg_type)
                     self._pending.resolve(rid, inner)
@@ -105,19 +112,28 @@ class Client:
         try:
             if msg_type == "sampling" and self._sampling_handler:
                 result = await self._sampling_handler(envelope.sampling)
-                await self._send(mcp_pb2.ClientEnvelope(
-                    request_id=rid, sampling_reply=result,
-                ))
+                await self._send(
+                    mcp_pb2.ClientEnvelope(
+                        request_id=rid,
+                        sampling_reply=result,
+                    )
+                )
             elif msg_type == "elicitation" and self._elicitation_handler:
                 result = await self._elicitation_handler(envelope.elicitation)
-                await self._send(mcp_pb2.ClientEnvelope(
-                    request_id=rid, elicitation_reply=result,
-                ))
+                await self._send(
+                    mcp_pb2.ClientEnvelope(
+                        request_id=rid,
+                        elicitation_reply=result,
+                    )
+                )
             elif msg_type == "roots_request" and self._roots_handler:
                 result = await self._roots_handler()
-                await self._send(mcp_pb2.ClientEnvelope(
-                    request_id=rid, roots_reply=result,
-                ))
+                await self._send(
+                    mcp_pb2.ClientEnvelope(
+                        request_id=rid,
+                        roots_reply=result,
+                    )
+                )
         except Exception:
             pass  # handler errors silently dropped for now
 
@@ -147,18 +163,14 @@ class Client:
         )
 
     async def list_tools(self, cursor: str | None = None) -> ListResult:
-        env = mcp_pb2.ClientEnvelope(
-            list_tools=mcp_pb2.ListToolsRequest(cursor=cursor or "")
-        )
+        env = mcp_pb2.ClientEnvelope(list_tools=mcp_pb2.ListToolsRequest(cursor=cursor or ""))
         resp = await self._request(env)
         return ListResult(
             items=list(resp.tools),
             next_cursor=resp.next_cursor or None,
         )
 
-    async def call_tool(
-        self, name: str, arguments: dict | None = None
-    ) -> mcp_pb2.CallToolResponse:
+    async def call_tool(self, name: str, arguments: dict | None = None) -> mcp_pb2.CallToolResponse:
         env = mcp_pb2.ClientEnvelope(
             call_tool=mcp_pb2.CallToolRequest(
                 name=name,
@@ -185,15 +197,15 @@ class Client:
 
     async def subscribe_resource(self, uri: str) -> None:
         """Subscribe to updates for a specific resource URI."""
-        await self._send(mcp_pb2.ClientEnvelope(
-            request_id=0,
-            subscribe_res=mcp_pb2.SubscribeResourceReq(uri=uri),
-        ))
+        await self._send(
+            mcp_pb2.ClientEnvelope(
+                request_id=0,
+                subscribe_res=mcp_pb2.SubscribeResourceReq(uri=uri),
+            )
+        )
 
     async def list_prompts(self, cursor: str | None = None) -> ListResult:
-        env = mcp_pb2.ClientEnvelope(
-            list_prompts=mcp_pb2.ListPromptsRequest(cursor=cursor or "")
-        )
+        env = mcp_pb2.ClientEnvelope(list_prompts=mcp_pb2.ListPromptsRequest(cursor=cursor or ""))
         resp = await self._request(env)
         return ListResult(
             items=list(resp.prompts),
@@ -221,7 +233,11 @@ class Client:
         )
 
     async def complete(
-        self, ref_type: str, ref_name: str, argument_name: str, value: str,
+        self,
+        ref_type: str,
+        ref_name: str,
+        argument_name: str,
+        value: str,
     ) -> mcp_pb2.CompleteResponse:
         env = mcp_pb2.ClientEnvelope(
             complete=mcp_pb2.CompleteRequest(
@@ -239,18 +255,22 @@ class Client:
         await self._request(env)
 
     async def cancel(self, target_request_id: int) -> None:
-        await self._send(mcp_pb2.ClientEnvelope(
-            request_id=0,
-            cancel=mcp_pb2.CancelRequest(target_request_id=target_request_id),
-        ))
+        await self._send(
+            mcp_pb2.ClientEnvelope(
+                request_id=0,
+                cancel=mcp_pb2.CancelRequest(target_request_id=target_request_id),
+            )
+        )
 
     async def notify_roots_list_changed(self) -> None:
-        await self._send(mcp_pb2.ClientEnvelope(
-            request_id=0,
-            client_notification=mcp_pb2.ClientNotification(
-                type=mcp_pb2.ClientNotification.ROOTS_LIST_CHANGED,
-            ),
-        ))
+        await self._send(
+            mcp_pb2.ClientEnvelope(
+                request_id=0,
+                client_notification=mcp_pb2.ClientNotification(
+                    type=mcp_pb2.ClientNotification.ROOTS_LIST_CHANGED,
+                ),
+            )
+        )
 
     async def close(self) -> None:
         if self._reader_task:

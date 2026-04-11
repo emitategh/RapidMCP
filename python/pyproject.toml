@@ -17,6 +17,9 @@ dev = [
     "ty>=0.0.1",
 ]
 
+[project.scripts]
+fastermcp = "mcp_grpc.cli:main"
+
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
@@ -31,6 +34,7 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+exclude = ["src/mcp_grpc/_generated"]
 
 [tool.ruff.lint]
 select = [
@@ -54,13 +58,11 @@ known-first-party = ["mcp_grpc"]
 quote-style = "double"
 indent-style = "space"
 
-[tool.ty]
-# Source paths to type-check (excludes generated protobuf stubs)
-src = ["src/mcp_grpc"]
-
 [tool.ty.rules]
 # Non-blocking: all rules set to "warn" while ty is alpha
 # Flip individual rules to "error" as the codebase and ty stabilize
-unknown-argument-type = "warn"
-unknown-return-type = "warn"
+unknown-argument = "warn"
+invalid-return-type = "warn"
 missing-argument = "warn"
+invalid-argument-type = "warn"
+unresolved-attribute = "warn"

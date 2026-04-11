@@ -1,4 +1,5 @@
 """Test helpers: InProcessChannel wires client to server without a socket."""
+
 from __future__ import annotations
 
 import json
@@ -69,14 +70,10 @@ class _InProcessClient:
         )
 
     async def list_tools(self) -> ListResult:
-        resp = await self._roundtrip(
-            mcp_pb2.ClientEnvelope(list_tools=mcp_pb2.ListToolsRequest())
-        )
+        resp = await self._roundtrip(mcp_pb2.ClientEnvelope(list_tools=mcp_pb2.ListToolsRequest()))
         return ListResult(items=list(resp.tools), next_cursor=resp.next_cursor or None)
 
-    async def call_tool(
-        self, name: str, arguments: dict | None = None
-    ) -> mcp_pb2.CallToolResponse:
+    async def call_tool(self, name: str, arguments: dict | None = None) -> mcp_pb2.CallToolResponse:
         return await self._roundtrip(
             mcp_pb2.ClientEnvelope(
                 call_tool=mcp_pb2.CallToolRequest(
@@ -116,14 +113,16 @@ class _InProcessClient:
 
     async def list_resource_templates(self) -> ListResult:
         resp = await self._roundtrip(
-            mcp_pb2.ClientEnvelope(
-                list_resource_templates=mcp_pb2.ListResourceTemplatesRequest()
-            )
+            mcp_pb2.ClientEnvelope(list_resource_templates=mcp_pb2.ListResourceTemplatesRequest())
         )
         return ListResult(items=list(resp.templates), next_cursor=resp.next_cursor or None)
 
     async def complete(
-        self, ref_type: str, ref_name: str, argument_name: str, value: str,
+        self,
+        ref_type: str,
+        ref_name: str,
+        argument_name: str,
+        value: str,
     ) -> mcp_pb2.CompleteResponse:
         return await self._roundtrip(
             mcp_pb2.ClientEnvelope(
