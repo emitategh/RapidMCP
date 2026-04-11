@@ -195,6 +195,20 @@ def test_prompt_bare_decorator():
     assert prompts[0].description == "Greet the user"
 
 
+def test_prompt_empty_parens():
+    """@mcp.prompt() with empty parens infers description from docstring."""
+    mcp = FasterMCP(name="test", version="0.1")
+
+    @mcp.prompt()
+    async def greet(name: str) -> str:
+        """Greet the user"""
+        return f"Hello, {name}!"
+
+    prompts = mcp.list_registered_prompts()
+    assert len(prompts) == 1
+    assert prompts[0].description == "Greet the user"
+
+
 def test_resource_optional_description():
     """@mcp.resource(uri) without description infers from docstring."""
     mcp = FasterMCP(name="test", version="0.1")
@@ -221,3 +235,29 @@ def test_resource_template_optional_description():
     templates = mcp.list_registered_resource_templates()
     assert len(templates) == 1
     assert templates[0].description == "Read a file"
+
+
+def test_tool_explicit_description_overrides_docstring():
+    """Explicit description= kwarg wins over docstring."""
+    mcp = FasterMCP(name="test", version="0.1")
+
+    @mcp.tool(description="Override")
+    async def echo(text: str) -> str:
+        """Docstring that should be ignored"""
+        return text
+
+    tools = mcp.list_registered_tools()
+    assert tools[0].description == "Override"
+
+
+def test_prompt_explicit_description_overrides_docstring():
+    """Explicit description= kwarg wins over docstring."""
+    mcp = FasterMCP(name="test", version="0.1")
+
+    @mcp.prompt(description="Override")
+    async def greet(name: str) -> str:
+        """Docstring that should be ignored"""
+        return f"Hello, {name}!"
+
+    prompts = mcp.list_registered_prompts()
+    assert prompts[0].description == "Override"
