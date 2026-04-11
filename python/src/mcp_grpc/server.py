@@ -5,6 +5,7 @@ import asyncio
 import inspect
 import json
 from dataclasses import dataclass
+from functools import partial
 from typing import Any, Callable, Awaitable
 
 import grpc
@@ -12,6 +13,7 @@ from grpc import aio as grpc_aio
 
 from mcp_grpc._generated import mcp_pb2, mcp_pb2_grpc
 from mcp_grpc.errors import McpError
+from mcp_grpc.middleware import Middleware, ToolCallContext
 from mcp_grpc.session import PendingRequests
 
 
@@ -262,9 +264,8 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                                     pending=server_pending,
                                     write_queue=write_queue,
                                 )
-                            result = await self._server.handle_call_tool(
-                                _req.name, _req.arguments, context=ctx,
-                            )
+                            args = json.loads(_req.arguments) if _req.arguments else {}
+                            result = await self._server._dispatch_tool(_req.name, args, ctx)
                             await write_queue.put(mcp_pb2.ServerEnvelope(
                                 request_id=_rid, call_tool=result,
                             ))
@@ -440,7 +441,7 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
 class FasterMCP:
     """Register tools, resources, and prompts, then serve over gRPC."""
 
-    def __init__(self, name: str, version: str) -> None:
+    def __init__(self, name: str, version: str, middleware: list[Middleware] | None = None) -> None:
         self.name = name
         self.version = version
         self._tools: dict[str, RegisteredTool] = {}
@@ -451,6 +452,7 @@ class FasterMCP:
         self._session_queues: list[asyncio.Queue] = []
         self._client_notification_handlers: dict[str, list[Callable]] = {}
         self._subscribe_handlers: list[Callable] = []
+        self._middleware: list[Middleware] = list(middleware or [])
 
     def tool(self, *, description: str | None = None) -> Callable[[Callable], Callable]:
         def decorator(fn: Callable) -> Callable:
@@ -545,6 +547,31 @@ class FasterMCP:
     def list_registered_resource_templates(self) -> list[RegisteredResourceTemplate]:
         return list(self._resource_templates.values())
 
+    def add_middleware(self, middleware: Middleware) -> None:
+        """Append a middleware to the chain (outermost if added last)."""
+        self._middleware.append(middleware)
+
+    async def _dispatch_tool(
+        self, name: str, arguments: dict, ctx: Context | None,
+    ) -> mcp_pb2.CallToolResponse:
+        """Run a tool call through the full middleware chain.
+
+        Chain is built in reversed registration order so the first-registered
+        middleware is the outermost wrapper (runs first on entry, last on exit).
+        functools.partial captures each call_next by value at construction time,
+        avoiding the classic loop-closure bug.
+        """
+        tool_ctx = ToolCallContext(tool_name=name, arguments=arguments, ctx=ctx)
+
+        async def base(tc: ToolCallContext) -> mcp_pb2.CallToolResponse:
+            return await self._call_tool_with_dict(tc.tool_name, tc.arguments, tc.ctx)
+
+        chain = base
+        for mw in reversed(self._middleware):
+            chain = partial(mw.on_tool_call, call_next=chain)
+
+        return await chain(tool_ctx)
+
     def on_roots_list_changed(self, handler: Callable) -> None:
         self._client_notification_handlers.setdefault("roots_list_changed", []).append(handler)
 
@@ -581,18 +608,19 @@ class FasterMCP:
             type=mcp_pb2.ServerNotification.PROMPTS_LIST_CHANGED,
         ))
 
-    async def handle_call_tool(
-        self, name: str, arguments_json: str, context: Context | None = None,
+    async def _call_tool_with_dict(
+        self, name: str, arguments: dict, ctx: Context | None = None,
     ) -> mcp_pb2.CallToolResponse:
+        """Invoke a tool with a pre-parsed arguments dict (used by middleware chain)."""
         tool = self._tools.get(name)
         if not tool:
             raise McpError(code=404, message=f"Tool '{name}' not found")
-        args = json.loads(arguments_json) if arguments_json else {}
-        if tool.needs_context and context is not None:
+        args = dict(arguments)
+        if tool.needs_context and ctx is not None:
             sig = inspect.signature(tool.handler)
             for param_name, param in sig.parameters.items():
                 if param.annotation is Context:
-                    args[param_name] = context
+                    args[param_name] = ctx
                     break
         try:
             result = await tool.handler(**args)
@@ -606,6 +634,13 @@ class FasterMCP:
                 content=[mcp_pb2.ContentItem(type="text", text=str(e))],
                 is_error=True,
             )
+
+    async def handle_call_tool(
+        self, name: str, arguments_json: str, context: Context | None = None,
+    ) -> mcp_pb2.CallToolResponse:
+        """Public API: parse JSON arguments and invoke the tool."""
+        args = json.loads(arguments_json) if arguments_json else {}
+        return await self._call_tool_with_dict(name, args, context)
 
     async def _start_grpc(self, port: int) -> grpc_aio.Server:
         grpc_server = grpc_aio.server()
