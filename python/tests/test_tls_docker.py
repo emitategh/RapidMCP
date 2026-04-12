@@ -305,7 +305,7 @@ async def test_docker_tls_wrong_ca_rejected(pki):
     """Client using a wrong CA cannot verify the server cert — connection fails."""
     with _DockerTLSServer("tls_echo.py", pki, []) as srv:
         tls = ClientTLSConfig(ca=pki.wrong_ca_cert)
-        with pytest.raises(Exception):
+        with pytest.raises(grpc.aio.AioRpcError):
             async with asyncio.timeout(15):
                 async with Client(f"localhost:{srv.port}", tls=tls) as client:
                     await client.call_tool("echo", {"text": "hi"})
@@ -315,7 +315,7 @@ async def test_docker_tls_wrong_ca_rejected(pki):
 async def test_docker_tls_insecure_client_rejected(pki):
     """Plain insecure client cannot connect to a TLS-only server."""
     with _DockerTLSServer("tls_echo.py", pki, []) as srv:
-        with pytest.raises(Exception):
+        with pytest.raises(grpc.aio.AioRpcError):
             async with asyncio.timeout(15):
                 async with Client(f"localhost:{srv.port}") as client:
                     await client.call_tool("echo", {"text": "hi"})
@@ -337,7 +337,7 @@ async def test_docker_mtls_no_client_cert_rejected(pki):
     """Client without a client cert is rejected by mTLS server."""
     with _DockerTLSServer("tls_echo.py", pki, ["/certs/ca.crt"]) as srv:
         tls = ClientTLSConfig(ca=pki.ca_cert)  # CA only — no cert/key
-        with pytest.raises(Exception):
+        with pytest.raises(grpc.aio.AioRpcError):
             async with asyncio.timeout(15):
                 async with Client(f"localhost:{srv.port}", tls=tls) as client:
                     await client.call_tool("echo", {"text": "hi"})
