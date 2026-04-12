@@ -1,5 +1,6 @@
 import grpc
 import pytest
+
 from rapidmcp import Client, RapidMCP
 from rapidmcp.auth import TLSConfig
 
@@ -111,3 +112,7 @@ async def test_no_auth_backward_compat():
         async with Client(f"localhost:{server.port}") as client:
             result = await client.list_tools()
             assert len(result.items) == 1
+
+
+def test_tls_config_importable_from_rapidmcp():
+    from rapidmcp import TLSConfig  # noqa: F401

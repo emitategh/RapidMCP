@@ -2,6 +2,7 @@
 
 __version__ = "0.1.0"
 
+from rapidmcp.auth import TLSConfig
 from rapidmcp.client import Client
 from rapidmcp.content import Audio, Image
 from rapidmcp.context import Context
@@ -54,7 +55,6 @@ __all__ = [
     "ElicitationField",
     "ElicitationResult",
     "EnumField",
-    "RapidMCP",
     "FloatField",
     "GetPromptResult",
     "Image",
@@ -66,11 +66,13 @@ __all__ = [
     "Prompt",
     "PromptArgument",
     "PromptMessage",
+    "RapidMCP",
     "ReadResourceResult",
     "Resource",
     "ResourceTemplate",
     "ServerInfo",
     "StringField",
+    "TLSConfig",
     "TimeoutMiddleware",
     "TimingMiddleware",
     "Tool",
