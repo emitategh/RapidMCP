@@ -26,6 +26,7 @@ message ClientEnvelope {
     PingRequest            ping              = 60;
     CancelRequest          cancel            = 61;
     ClientNotification     client_notification = 62;
+    ErrorResponse          error             = 70;
   }
 }
 

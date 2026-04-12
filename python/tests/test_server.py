@@ -451,3 +451,26 @@ async def test_ctx_report_progress_without_total():
     payload = json.loads(queue.get_nowait().notification.payload)
     assert payload["progress"] == 3
     assert payload["total"] is None
+
+
+# ---------------------------------------------------------------------------
+# Issue 8: tool returning None produces empty content list
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_tool_returning_none_gives_empty_content():
+    """A tool that returns None should produce an empty content list (not 'None' string)."""
+    from mcp_grpc import FasterMCP
+    from mcp_grpc.testing import InProcessChannel
+
+    server = FasterMCP(name="none-server", version="0.1")
+
+    @server.tool(description="Does nothing")
+    async def do_nothing() -> None:
+        pass
+
+    async with InProcessChannel(server) as client:
+        result = await client.call_tool("do_nothing", {})
+        assert not result.is_error
+        assert result.content == []

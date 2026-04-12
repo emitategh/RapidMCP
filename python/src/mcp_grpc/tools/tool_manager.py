@@ -31,6 +31,8 @@ class ToolManager:
     def __init__(self, middleware: list[Middleware] | None = None) -> None:
         self._tools: dict[str, RegisteredTool] = {}
         self._middleware: list[Middleware] = list(middleware or [])
+        self._cached_chain: Any | None = None
+        self._chain_dirty: bool = True
 
     def tool(
         self,
@@ -87,6 +89,7 @@ class ToolManager:
     def add_middleware(self, middleware: Middleware) -> None:
         """Append a middleware to the chain (outermost if added last)."""
         self._middleware.append(middleware)
+        self._chain_dirty = True
 
     def list_registered_tools(self) -> list[RegisteredTool]:
         return list(self._tools.values())
@@ -109,14 +112,18 @@ class ToolManager:
             tool_name=name, arguments=arguments, ctx=ctx, input_schema=schema_dict
         )
 
-        async def base(tc: ToolCallContext) -> mcp_pb2.CallToolResponse:
-            return await self._call_tool_with_dict(tc.tool_name, tc.arguments, tc.ctx)
+        if self._chain_dirty or self._cached_chain is None:
 
-        chain = base
-        for mw in reversed(self._middleware):
-            chain = partial(mw.on_tool_call, call_next=chain)
+            async def base(tc: ToolCallContext) -> mcp_pb2.CallToolResponse:
+                return await self._call_tool_with_dict(tc.tool_name, tc.arguments, tc.ctx)
 
-        return await chain(tool_ctx)
+            chain = base
+            for mw in reversed(self._middleware):
+                chain = partial(mw.on_tool_call, call_next=chain)
+            self._cached_chain = chain
+            self._chain_dirty = False
+
+        return await self._cached_chain(tool_ctx)
 
     async def _call_tool_with_dict(
         self,

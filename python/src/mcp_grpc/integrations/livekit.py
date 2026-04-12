@@ -87,9 +87,7 @@ class MCPServerGRPC(MCPServer):
             async def _call(raw_arguments: dict[str, Any], _n: str = _name) -> str:
                 tool_result = await self._grpc_client.call_tool(_n, raw_arguments)
                 if tool_result.is_error:
-                    raise ToolError(
-                        "\n".join(c.text for c in tool_result.content if c.text)
-                    )
+                    raise ToolError("\n".join(c.text for c in tool_result.content if c.text))
                 if not tool_result.content:
                     raise ToolError(f"Tool '{_n}' returned no content")
                 c0 = tool_result.content[0]
@@ -99,27 +97,45 @@ class MCPServerGRPC(MCPServer):
                     # image / audio — return base64 data with mime type
                     import base64
                     import json as _json
-                    return _json.dumps({"type": c0.type, "mimeType": c0.mime_type,
-                                        "data": base64.b64encode(c0.data).decode()})
-                import json as _json
-                return _json.dumps([
-                    {"type": c.type, "text": c.text} if c.type == "text"
-                    else {"type": c.type, "uri": c.uri} if c.type == "resource"
-                    else {"type": c.type, "mimeType": c.mime_type}
-                    for c in tool_result.content
-                ])
 
-            tools.append(function_tool(_call, raw_schema={
-                "name": _name,
-                "description": _desc,
-                "parameters": t.input_schema,
-            }))
+                    return _json.dumps(
+                        {
+                            "type": c0.type,
+                            "mimeType": c0.mime_type,
+                            "data": base64.b64encode(c0.data).decode(),
+                        }
+                    )
+                import json as _json
+
+                return _json.dumps(
+                    [
+                        {"type": c.type, "text": c.text}
+                        if c.type == "text"
+                        else {"type": c.type, "uri": c.uri}
+                        if c.type == "resource"
+                        else {"type": c.type, "mimeType": c.mime_type}
+                        for c in tool_result.content
+                    ]
+                )
+
+            tools.append(
+                function_tool(
+                    _call,
+                    raw_schema={
+                        "name": _name,
+                        "description": _desc,
+                        "parameters": t.input_schema,
+                    },
+                )
+            )
 
         self._lk_tools = tools
         self._cache_dirty = False
         logger.info(
             "MCPServerGRPC %s — %d tool(s): %s",
-            self._address, len(tools), [t.name for t in result.items],
+            self._address,
+            len(tools),
+            [t.name for t in result.items],
         )
         return tools
 

@@ -422,3 +422,127 @@ async def test_grpc_roots_roundtrip():
             assert uris == {"file:///home/user/project", "file:///home/user/docs"}
         finally:
             await client.close()
+
+
+# ---------------------------------------------------------------------------
+# Resource template reading (Issue 1)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_grpc_read_resource_via_template():
+    """read_resource matches a URI against a registered template."""
+    server = FasterMCP(name="tmpl-server", version="0.1")
+
+    @server.resource_template("res://items/{item_id}", description="An item")
+    async def get_item(item_id: str) -> str:
+        return f"item:{item_id}"
+
+    async with server:
+        async with Client(f"localhost:{server.port}") as client:
+            result = await client.read_resource("res://items/42")
+            assert result.content[0].text == "item:42"
+
+
+@pytest.mark.asyncio
+async def test_grpc_read_resource_exact_match_preferred():
+    """A static resource beats a matching template for the same URI."""
+    server = FasterMCP(name="tmpl-server", version="0.1")
+
+    @server.resource(uri="res://items/special", description="Static special item")
+    async def special_item() -> str:
+        return "static-special"
+
+    @server.resource_template("res://items/{item_id}", description="An item")
+    async def get_item(item_id: str) -> str:
+        return f"item:{item_id}"
+
+    async with server:
+        async with Client(f"localhost:{server.port}") as client:
+            result = await client.read_resource("res://items/special")
+            assert result.content[0].text == "static-special"
+
+
+@pytest.mark.asyncio
+async def test_grpc_read_resource_template_multi_segment():
+    """Wildcard {path*} matches multiple path segments."""
+    server = FasterMCP(name="tmpl-server", version="0.1")
+
+    @server.resource_template("res://files/{path*}", description="A file")
+    async def get_file(path: str) -> str:
+        return f"file:{path}"
+
+    async with server:
+        async with Client(f"localhost:{server.port}") as client:
+            result = await client.read_resource("res://files/a/b/c.txt")
+            assert result.content[0].text == "file:a/b/c.txt"
+
+
+@pytest.mark.asyncio
+async def test_grpc_read_resource_template_not_found():
+    """A URI that matches no template returns a 404 error."""
+    server = FasterMCP(name="tmpl-server", version="0.1")
+
+    @server.resource_template("res://items/{item_id}", description="An item")
+    async def get_item(item_id: str) -> str:
+        return f"item:{item_id}"
+
+    from mcp_grpc.errors import McpError
+
+    async with server:
+        async with Client(f"localhost:{server.port}") as client:
+            with pytest.raises(McpError) as exc_info:
+                await client.read_resource("res://other/99")
+            assert exc_info.value.code == 404
+
+
+# ---------------------------------------------------------------------------
+# Error reply when no client handler registered (Issue 2)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_sampling_no_handler_returns_error():
+    """ctx.sample() gets McpError (not timeout) when client has no sampling handler."""
+    server = FasterMCP(name="sampling-server", version="0.1")
+
+    @server.tool(description="Sample")
+    async def do_sample(ctx: Context) -> str:
+        try:
+            await ctx.sample(
+                messages=[{"role": "user", "content": "hi"}],
+                max_tokens=10,
+            )
+        except Exception:
+            return "got-error"
+        return "done"
+
+    async with server:
+        # Connect without a sampling handler — client will send error reply
+        async with Client(f"localhost:{server.port}") as client:
+            result = await client.call_tool("do_sample", {})
+            assert not result.is_error
+            assert result.content[0].text == "got-error"
+
+
+@pytest.mark.asyncio
+async def test_elicitation_no_handler_returns_error():
+    """ctx.elicit() gets McpError (not timeout) when client has no elicitation handler."""
+    server = FasterMCP(name="elicit-server", version="0.1")
+
+    @server.tool(description="Elicit")
+    async def do_elicit(ctx: Context) -> str:
+        try:
+            await ctx.elicit(
+                message="Pick one",
+                schema='{"type":"object","properties":{}}',
+            )
+        except Exception:
+            return "got-error"
+        return "done"
+
+    async with server:
+        async with Client(f"localhost:{server.port}") as client:
+            result = await client.call_tool("do_elicit", {})
+            assert not result.is_error
+            assert result.content[0].text == "got-error"

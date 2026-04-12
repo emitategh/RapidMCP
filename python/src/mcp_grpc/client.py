@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from typing import Any, Literal
@@ -55,6 +56,7 @@ class Client:
         self._sampling_handler = None
         self._elicitation_handler = None
         self._roots_handler = None
+        self._write_queue: asyncio.Queue[mcp_pb2.ClientEnvelope | None] | None = None
         self._background_tasks: set[asyncio.Task] = set()
         self._ref_count: int = 0
 
@@ -84,9 +86,12 @@ class Client:
         self._stream = stub.Session(self._outbound_iter())
         self._reader_task = asyncio.create_task(self._reader_loop())
         await self._initialize()
-        logger.debug("connected to %s  server=%s %s", self._target,
-                     self.server_info.server_name if self.server_info else "?",
-                     self.server_info.server_version if self.server_info else "?")
+        logger.debug(
+            "connected to %s  server=%s %s",
+            self._target,
+            self.server_info.server_name if self.server_info else "?",
+            self.server_info.server_version if self.server_info else "?",
+        )
 
     async def _outbound_iter(self):
         while True:
@@ -114,7 +119,10 @@ class Client:
             elapsed_ms = (time.monotonic() - t0) * 1000
             logger.warning(
                 "request timed out: %s rid=%d after %.0fms (timeout=%.0fs)",
-                msg_type, rid, elapsed_ms, self._REQUEST_TIMEOUT,
+                msg_type,
+                rid,
+                elapsed_ms,
+                self._REQUEST_TIMEOUT,
             )
             raise McpError(408, f"Request timed out: {msg_type} rid={rid}") from None
         elapsed_ms = (time.monotonic() - t0) * 1000
@@ -182,8 +190,32 @@ class Client:
                         roots_reply=result,
                     )
                 )
+            else:
+                logger.warning(
+                    "No handler for server request '%s' rid=%d, sending error",
+                    msg_type,
+                    rid,
+                )
+                await self._send(
+                    mcp_pb2.ClientEnvelope(
+                        request_id=rid,
+                        error=mcp_pb2.ErrorResponse(
+                            code=-32600,
+                            message=f"{msg_type} not supported by this client",
+                        ),
+                    )
+                )
         except Exception:
             logger.exception("Handler for server request '%s' raised", msg_type)
+            await self._send(
+                mcp_pb2.ClientEnvelope(
+                    request_id=rid,
+                    error=mcp_pb2.ErrorResponse(
+                        code=-32603,
+                        message=f"Handler for '{msg_type}' failed",
+                    ),
+                )
+            )
 
     async def _initialize(self) -> None:
         env = mcp_pb2.ClientEnvelope(
@@ -223,7 +255,6 @@ class Client:
         )
 
     async def call_tool(self, name: str, arguments: dict | None = None) -> CallToolResult:
-        import json
         env = mcp_pb2.ClientEnvelope(
             call_tool=mcp_pb2.CallToolRequest(
                 name=name,
@@ -334,8 +365,9 @@ class Client:
     async def close(self) -> None:
         logger.debug("closing connection to %s", self._target)
         # Signal outbound iterator to stop
-        if hasattr(self, "_write_queue"):
+        if self._write_queue is not None:
             await self._write_queue.put(None)
+            self._write_queue = None
         if self._reader_task:
             self._reader_task.cancel()
             try:
@@ -351,7 +383,11 @@ class Client:
     async def __aenter__(self):
         self._ref_count += 1
         if self._ref_count == 1:
-            await self.connect()
+            try:
+                await self.connect()
+            except BaseException:
+                self._ref_count = 0
+                raise
         return self
 
     async def __aexit__(self, *exc):

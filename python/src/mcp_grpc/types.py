@@ -16,6 +16,7 @@ from typing import Any
 # Content
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ContentItem:
     """A single content block in a tool result or resource/prompt message.
@@ -36,6 +37,7 @@ class ContentItem:
 # Tool call
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class CallToolResult:
     """Parsed result from a ``call_tool`` request."""
@@ -47,6 +49,7 @@ class CallToolResult:
 # ---------------------------------------------------------------------------
 # Tool listing
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class ToolAnnotationInfo:
@@ -65,14 +68,15 @@ class Tool:
 
     name: str
     description: str
-    input_schema: dict[str, Any]                  # already parsed from JSON
-    output_schema: dict[str, Any] | None = None   # None when absent
+    input_schema: dict[str, Any]  # already parsed from JSON
+    output_schema: dict[str, Any] | None = None  # None when absent
     annotations: ToolAnnotationInfo = field(default_factory=ToolAnnotationInfo)
 
 
 # ---------------------------------------------------------------------------
 # Resource listing / reading
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class Resource:
@@ -104,6 +108,7 @@ class ReadResourceResult:
 # ---------------------------------------------------------------------------
 # Prompt listing / retrieval
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class PromptArgument:
@@ -142,6 +147,7 @@ class GetPromptResult:
 # Completion
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class CompleteResult:
     """Parsed result from a ``complete`` request."""
@@ -154,6 +160,7 @@ class CompleteResult:
 # ---------------------------------------------------------------------------
 # Pagination wrapper (lives here so types.py is the single import for callers)
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class ListResult:
@@ -176,6 +183,7 @@ class ServerInfo:
 # Proto → dataclass converters (private)
 # ---------------------------------------------------------------------------
 
+
 def _convert_content_item(p) -> ContentItem:
     return ContentItem(
         type=p.type,
@@ -195,9 +203,7 @@ def _convert_call_tool_result(p) -> CallToolResult:
 
 def _convert_tool(p) -> Tool:
     input_schema: dict[str, Any] = json.loads(p.input_schema) if p.input_schema else {}
-    output_schema: dict[str, Any] | None = (
-        json.loads(p.output_schema) if p.output_schema else None
-    )
+    output_schema: dict[str, Any] | None = json.loads(p.output_schema) if p.output_schema else None
     a = p.annotations
     annotations = ToolAnnotationInfo(
         title=a.title,
@@ -252,8 +258,7 @@ def _convert_prompt(p) -> Prompt:
 def _convert_get_prompt_result(p) -> GetPromptResult:
     return GetPromptResult(
         messages=[
-            PromptMessage(role=m.role, content=_convert_content_item(m.content))
-            for m in p.messages
+            PromptMessage(role=m.role, content=_convert_content_item(m.content)) for m in p.messages
         ]
     )
 

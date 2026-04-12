@@ -14,6 +14,7 @@ def _to_content_items(result: Any) -> list[mcp_pb2.ContentItem]:
     """Convert a tool return value to a list of ContentItem protos.
 
     Supported types:
+    * ``None``  → empty list (no content)
     * ``str``   → text content
     * ``Image`` → image content (base64-encoded bytes + mime_type)
     * ``Audio`` → audio content (base64-encoded bytes + mime_type)
@@ -21,6 +22,8 @@ def _to_content_items(result: Any) -> list[mcp_pb2.ContentItem]:
     * ``list``  → each element converted recursively (flattened one level)
     * anything else → ``str()`` representation as text
     """
+    if result is None:
+        return []
     if isinstance(result, list):
         items: list[mcp_pb2.ContentItem] = []
         for elem in result:

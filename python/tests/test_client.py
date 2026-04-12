@@ -156,3 +156,37 @@ async def test_complete():
         result = await client.complete("ref/prompt", "greet", "language", "sp")
         assert "spanish" in result.values
         assert "english" not in result.values
+
+
+# ---------------------------------------------------------------------------
+# Issue 4: close() before connect() should not raise
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_close_before_connect_no_error():
+    """Calling close() on a freshly-constructed client should not raise."""
+    from mcp_grpc import Client
+
+    client = Client("localhost:1")
+    await client.close()  # should be a no-op, no exception
+
+
+# ---------------------------------------------------------------------------
+# Issue 6: __aenter__ connect failure resets ref_count
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_aenter_connect_failure_resets_ref_count():
+    """If connect() fails, _ref_count must be reset to 0 so the client is reusable."""
+    from mcp_grpc import Client
+
+    client = Client("localhost:1")  # no server running here
+    try:
+        async with client:
+            pass
+    except BaseException:
+        # CancelledError (BaseException) is raised when the gRPC stream fails
+        pass
+    assert client._ref_count == 0

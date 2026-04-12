@@ -13,6 +13,7 @@ from mcp_grpc._generated import mcp_pb2, mcp_pb2_grpc
 from mcp_grpc._utils import _paginate
 from mcp_grpc.context import Context
 from mcp_grpc.errors import McpError
+from mcp_grpc.resources.uri_template import match_uri_template
 from mcp_grpc.session import PendingRequests
 
 if TYPE_CHECKING:
@@ -22,7 +23,6 @@ logger = logging.getLogger("mcp_grpc.server")
 
 
 class _McpServicer(mcp_pb2_grpc.McpServicer):
-
     def __init__(self, server: FasterMCP) -> None:
         self._server = server
 
@@ -124,9 +124,7 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                 await write_queue.put(
                     mcp_pb2.ServerEnvelope(
                         request_id=rid,
-                        list_tools=mcp_pb2.ListToolsResponse(
-                            tools=page, next_cursor=next_cursor
-                        ),
+                        list_tools=mcp_pb2.ListToolsResponse(tools=page, next_cursor=next_cursor),
                     )
                 )
 
@@ -149,7 +147,11 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                         result = await self._server._dispatch_tool(_req.name, args, ctx)
                         elapsed_ms = (time.monotonic() - t0) * 1000
                         logger.debug(
-                            "session %s tool %s done rid=%d %.1fms", sid, _req.name, _rid, elapsed_ms
+                            "session %s tool %s done rid=%d %.1fms",
+                            sid,
+                            _req.name,
+                            _rid,
+                            elapsed_ms,
                         )
                         await write_queue.put(
                             mcp_pb2.ServerEnvelope(
@@ -161,7 +163,10 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                         elapsed_ms = (time.monotonic() - t0) * 1000
                         logger.warning(
                             "session %s tool %s cancelled rid=%d %.1fms",
-                            sid, _req.name, _rid, elapsed_ms,
+                            sid,
+                            _req.name,
+                            _rid,
+                            elapsed_ms,
                         )
                         await write_queue.put(
                             mcp_pb2.ServerEnvelope(
@@ -175,7 +180,12 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                         elapsed_ms = (time.monotonic() - t0) * 1000
                         logger.warning(
                             "session %s tool %s error rid=%d code=%d %.1fms: %s",
-                            sid, _req.name, _rid, e.code, elapsed_ms, e.message,
+                            sid,
+                            _req.name,
+                            _rid,
+                            e.code,
+                            elapsed_ms,
+                            e.message,
                         )
                         await write_queue.put(
                             mcp_pb2.ServerEnvelope(
@@ -213,6 +223,17 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
             elif msg_type == "read_resource":
                 uri = envelope.read_resource.uri
                 res = self._server._resources.get(uri)
+                template_params: dict[str, str] | None = None
+
+                # Fallback: try matching against resource templates
+                if not res:
+                    for tmpl in self._server._resource_templates.values():
+                        params = match_uri_template(uri, tmpl.uri_template)
+                        if params is not None:
+                            res = tmpl
+                            template_params = params
+                            break
+
                 if not res:
                     await write_queue.put(
                         mcp_pb2.ServerEnvelope(
@@ -225,7 +246,10 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                     )
                     return
                 try:
-                    raw = await res.handler()
+                    if template_params is not None:
+                        raw = await res.handler(**template_params)
+                    else:
+                        raw = await res.handler()
                 except Exception:
                     logger.exception("Resource handler for '%s' raised", uri)
                     await write_queue.put(
@@ -241,13 +265,9 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                 if isinstance(raw, bytes):
                     mime = res.mime_type
                     if mime.startswith("image/"):
-                        content_item = mcp_pb2.ContentItem(
-                            type="image", data=raw, mime_type=mime
-                        )
+                        content_item = mcp_pb2.ContentItem(type="image", data=raw, mime_type=mime)
                     elif mime.startswith("audio/"):
-                        content_item = mcp_pb2.ContentItem(
-                            type="audio", data=raw, mime_type=mime
-                        )
+                        content_item = mcp_pb2.ContentItem(type="audio", data=raw, mime_type=mime)
                     else:
                         content_item = mcp_pb2.ContentItem(
                             type="resource", data=raw, mime_type=mime
@@ -353,9 +373,7 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                     await write_queue.put(
                         mcp_pb2.ServerEnvelope(
                             request_id=rid,
-                            complete=mcp_pb2.CompleteResponse(
-                                values=[], has_more=False, total=0
-                            ),
+                            complete=mcp_pb2.CompleteResponse(values=[], has_more=False, total=0),
                         )
                     )
                 else:
@@ -387,6 +405,10 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
 
             elif msg_type == "roots_reply":
                 server_pending.resolve(rid, envelope.roots_reply)
+
+            elif msg_type == "error":
+                err = envelope.error
+                server_pending.reject(rid, McpError(err.code, err.message))
 
             elif msg_type == "client_notification":
                 notif = envelope.client_notification
@@ -444,7 +466,8 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                         eof = True
                         logger.debug(
                             "session %s client EOF, draining %d tool task(s)",
-                            sid, len(_tool_tasks),
+                            sid,
+                            len(_tool_tasks),
                         )
                         # Wait for in-flight tool tasks before signalling EOF.
                         if _tool_tasks:

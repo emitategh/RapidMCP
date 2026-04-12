@@ -479,3 +479,62 @@ async def test_logging_middleware_logs_tool(caplog):
     messages = [r.message for r in caplog.records]
     assert any("mytool" in m for m in messages)
     assert len([m for m in messages if "mytool" in m]) >= 2
+
+
+# ---------------------------------------------------------------------------
+# Issue 5: middleware chain caching
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_middleware_chain_cached_across_calls():
+    """Middleware chain is built once and reused on subsequent calls."""
+    from mcp_grpc.middleware import Middleware
+    from mcp_grpc.tools.tool_manager import ToolManager
+
+    class CountingMiddleware(Middleware):
+        async def on_tool_call(self, tool_ctx, call_next):
+            return await call_next(tool_ctx)
+
+    manager = ToolManager(middleware=[CountingMiddleware()])
+
+    @manager.tool(description="Echo")
+    async def echo(text: str) -> str:
+        return text
+
+    # First call — chain built, dirty flag cleared
+    assert manager._chain_dirty is True
+    await manager._dispatch_tool("echo", {"text": "a"}, None)
+    assert manager._chain_dirty is False
+    chain_first = manager._cached_chain
+
+    # Second call — chain reused
+    await manager._dispatch_tool("echo", {"text": "b"}, None)
+    assert manager._cached_chain is chain_first
+
+
+@pytest.mark.asyncio
+async def test_middleware_chain_invalidated_after_add():
+    """Adding a middleware marks the chain dirty so it is rebuilt."""
+    from mcp_grpc.middleware import Middleware
+    from mcp_grpc.tools.tool_manager import ToolManager
+
+    class NoopMiddleware(Middleware):
+        async def on_tool_call(self, tool_ctx, call_next):
+            return await call_next(tool_ctx)
+
+    manager = ToolManager()
+
+    @manager.tool(description="Echo")
+    async def echo(text: str) -> str:
+        return text
+
+    await manager._dispatch_tool("echo", {"text": "a"}, None)
+    chain_before = manager._cached_chain
+
+    manager.add_middleware(NoopMiddleware())
+    assert manager._chain_dirty is True
+
+    await manager._dispatch_tool("echo", {"text": "b"}, None)
+    assert manager._chain_dirty is False
+    assert manager._cached_chain is not chain_before

@@ -257,8 +257,8 @@ class FasterMCP:
         try:
             actual_port = grpc_server.add_insecure_port(f"[::]:{port}")
             await grpc_server.start()
-        except RuntimeError:
-            # Fall back to IPv4 (common on Windows)
+        except (OSError, RuntimeError) as exc:
+            logger.debug("IPv6 bind failed (%s), falling back to IPv4", exc)
             grpc_server = grpc_aio.server()
             mcp_pb2_grpc.add_McpServicer_to_server(_McpServicer(self), grpc_server)
             actual_port = grpc_server.add_insecure_port(f"127.0.0.1:{port}")
@@ -270,12 +270,13 @@ class FasterMCP:
         from mcp_grpc import __version__
 
         title = "█▀▀ ▄▀█ █▀ ▀█▀ █▀▀ █▀█   █▀▄▀█ █▀▀ █▀█"
-        sub   = "█▀  █▀█ ▄█  █  ██▄ █▀▄   █ ▀ █ █▄▄ █▀▀"
+        sub = "█▀  █▀█ ▄█  █  ██▄ █▀▄   █ ▀ █ █▄▄ █▀▀"
         server_line = f"Server:  {self.name}, {self.version}"
         version_line = f"FasterMCP {__version__}"
         transport_line = f"grpc://0.0.0.0:{port}"
 
         W = 76
+
         def row(content: str = "") -> str:
             pad = W - 2 - len(content)
             left = pad // 2
