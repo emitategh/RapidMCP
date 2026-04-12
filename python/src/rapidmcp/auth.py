@@ -70,7 +70,8 @@ class _AuthInterceptor(grpc_aio.ServerInterceptor):
                 if not await self._check_token(context):
                     await context.abort(grpc.StatusCode.UNAUTHENTICATED, "Invalid token")
                     return
-                return await original(request_iterator, context)
+                async for msg in original(request_iterator, context):
+                    yield msg
 
             return handler._replace(stream_stream=auth_stream_stream)
 

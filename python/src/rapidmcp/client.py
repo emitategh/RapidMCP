@@ -45,8 +45,9 @@ class Client:
     supported for explicit lifecycle management.
     """
 
-    def __init__(self, target: str) -> None:
+    def __init__(self, target: str, token: str | None = None) -> None:
         self._target = target
+        self._metadata = [("authorization", f"Bearer {token}")] if token else []
         self._pending = PendingRequests()
         self._notifications = NotificationRegistry()
         self._channel: grpc_aio.Channel | None = None
@@ -83,7 +84,7 @@ class Client:
         self._channel = grpc_aio.insecure_channel(self._target)
         stub = mcp_pb2_grpc.McpStub(self._channel)
         self._write_queue: asyncio.Queue[mcp_pb2.ClientEnvelope] = asyncio.Queue()
-        self._stream = stub.Session(self._outbound_iter())
+        self._stream = stub.Session(self._outbound_iter(), metadata=self._metadata)
         self._reader_task = asyncio.create_task(self._reader_loop())
         await self._initialize()
         logger.debug(
@@ -159,7 +160,7 @@ class Client:
             logger.debug("reader loop ended normally for %s", self._target)
         except grpc.RpcError as exc:
             logger.warning("gRPC stream error for %s: %s %s", self._target, type(exc).__name__, exc)
-            self._pending.cancel_all()
+            self._pending.reject_all(exc)
 
     async def _handle_server_request(self, envelope: mcp_pb2.ServerEnvelope) -> None:
         rid = envelope.request_id

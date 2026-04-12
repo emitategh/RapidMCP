@@ -40,6 +40,13 @@ class PendingRequests:
                 future.cancel()
         self._pending.clear()
 
+    def reject_all(self, error: Exception) -> None:
+        """Reject all pending futures with the given exception."""
+        for future in self._pending.values():
+            if not future.done():
+                future.set_exception(error)
+        self._pending.clear()
+
 
 class NotificationRegistry:
     """Registry for notification callbacks keyed by notification type name."""
