@@ -1,6 +1,6 @@
 [project]
 name = "rapidmcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "gRPC-native MCP (Model Context Protocol) library — ~17x lower latency than HTTP transports"
 readme = "README.md"
 license = {file = "LICENSE"}
