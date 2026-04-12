@@ -1,4 +1,4 @@
-"""FasterMCP: register tools, resources, prompts and serve them over gRPC."""
+"""RapidMCP: register tools, resources, prompts and serve them over gRPC."""
 
 from __future__ import annotations
 
@@ -11,19 +11,19 @@ from typing import Any
 
 from grpc import aio as grpc_aio
 
-from fastermcp._generated import mcp_pb2, mcp_pb2_grpc
-from fastermcp._servicer import _McpServicer
-from fastermcp._utils import _prefix_resource_uri
-from fastermcp.context import Context
-from fastermcp.middleware import Middleware
-from fastermcp.prompts import PromptManager, RegisteredCompletion, RegisteredPrompt
-from fastermcp.resources import RegisteredResource, RegisteredResourceTemplate, ResourceManager
-from fastermcp.tools import RegisteredTool, ToolManager
+from rapidmcp._generated import mcp_pb2, mcp_pb2_grpc
+from rapidmcp._servicer import _McpServicer
+from rapidmcp._utils import _prefix_resource_uri
+from rapidmcp.context import Context
+from rapidmcp.middleware import Middleware
+from rapidmcp.prompts import PromptManager, RegisteredCompletion, RegisteredPrompt
+from rapidmcp.resources import RegisteredResource, RegisteredResourceTemplate, ResourceManager
+from rapidmcp.tools import RegisteredTool, ToolManager
 
-logger = logging.getLogger("fastermcp.server")
+logger = logging.getLogger("rapidmcp.server")
 
 
-class FasterMCP:
+class RapidMCP:
     """Register tools, resources, and prompts, then serve over gRPC."""
 
     def __init__(
@@ -126,7 +126,7 @@ class FasterMCP:
         """Append a middleware to the chain (outermost if added last)."""
         self._tool_manager.add_middleware(middleware)
 
-    def mount(self, sub: FasterMCP, *, prefix: str) -> None:
+    def mount(self, sub: RapidMCP, *, prefix: str) -> None:
         """Merge all registries from *sub* into this server under *prefix*.
 
         Tools and prompts are registered as ``{prefix}_{name}``.
@@ -267,12 +267,12 @@ class FasterMCP:
         return grpc_server
 
     def _print_banner(self, port: int) -> None:
-        from fastermcp import __version__
+        from rapidmcp import __version__
 
         title = "█▀▀ ▄▀█ █▀ ▀█▀ █▀▀ █▀█   █▀▄▀█ █▀▀ █▀█"
         sub = "█▀  █▀█ ▄█  █  ██▄ █▀▄   █ ▀ █ █▄▄ █▀▀"
         server_line = f"Server:  {self.name}, {self.version}"
-        version_line = f"FasterMCP {__version__}"
+        version_line = f"RapidMCP {__version__}"
         transport_line = f"grpc://0.0.0.0:{port}"
 
         W = 76

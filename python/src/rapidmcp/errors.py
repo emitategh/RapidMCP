@@ -1,4 +1,4 @@
-"""Error types for fastermcp."""
+"""Error types for rapidmcp."""
 
 
 class McpError(Exception):

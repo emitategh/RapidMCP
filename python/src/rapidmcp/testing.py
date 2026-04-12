@@ -5,11 +5,11 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from fastermcp._generated import mcp_pb2
-from fastermcp.errors import McpError
-from fastermcp.server import FasterMCP, _McpServicer
-from fastermcp.session import PendingRequests
-from fastermcp.types import (
+from rapidmcp._generated import mcp_pb2
+from rapidmcp.errors import McpError
+from rapidmcp.server import RapidMCP, _McpServicer
+from rapidmcp.session import PendingRequests
+from rapidmcp.types import (
     CallToolResult,
     CompleteResult,
     GetPromptResult,
@@ -48,9 +48,9 @@ class _AsyncMessageIter:
 
 
 class InProcessChannel:
-    """Connect a client directly to a FasterMCP server in-memory (no socket)."""
+    """Connect a client directly to a RapidMCP server in-memory (no socket)."""
 
-    def __init__(self, server: FasterMCP) -> None:
+    def __init__(self, server: RapidMCP) -> None:
         self._server = server
         self._servicer = _McpServicer(server)
         self._client = _InProcessClient(self._servicer)

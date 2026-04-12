@@ -5,10 +5,10 @@ from __future__ import annotations
 import asyncio
 import json
 
-from fastermcp._generated import mcp_pb2
-from fastermcp.elicitation import ElicitationResult, build_elicitation_schema
-from fastermcp.errors import McpError
-from fastermcp.session import PendingRequests
+from rapidmcp._generated import mcp_pb2
+from rapidmcp.elicitation import ElicitationResult, build_elicitation_schema
+from rapidmcp.errors import McpError
+from rapidmcp.session import PendingRequests
 
 _DEFAULT_TIMEOUT: float = 30.0
 

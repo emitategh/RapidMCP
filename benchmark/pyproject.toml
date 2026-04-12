@@ -1,15 +1,15 @@
 [project]
-name = "fastermcp-benchmark"
+name = "rapidmcp-benchmark"
 version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
     "fastmcp>=2.0",
     "mcp>=1.0",
-    "fastermcp",
+    "rapidmcp",
 ]
 
 [tool.uv.sources]
-fastermcp = { path = "../python" }
+rapidmcp = { path = "../python" }
 
 [build-system]
 requires = ["setuptools>=61.0"]

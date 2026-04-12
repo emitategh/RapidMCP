@@ -11,9 +11,9 @@ import time
 
 import pytest
 
-from fastermcp import Client, FasterMCP
-from fastermcp._generated import mcp_pb2
-from fastermcp.context import Context
+from rapidmcp import Client, RapidMCP
+from rapidmcp._generated import mcp_pb2
+from rapidmcp.context import Context
 
 # ---------------------------------------------------------------------------
 # 1. Many concurrent calls from one client (same session)
@@ -23,7 +23,7 @@ from fastermcp.context import Context
 @pytest.mark.asyncio
 async def test_concurrent_tool_calls_same_client():
     """50 concurrent calls on a single connection must all complete correctly."""
-    server = FasterMCP(name="stress", version="0.1")
+    server = RapidMCP(name="stress", version="0.1")
 
     @server.tool(description="Slow echo")
     async def slow_echo(text: str) -> str:
@@ -50,7 +50,7 @@ async def test_concurrent_tool_calls_same_client():
 @pytest.mark.asyncio
 async def test_concurrent_clients():
     """30 clients connecting and calling a tool simultaneously."""
-    server = FasterMCP(name="stress", version="0.1")
+    server = RapidMCP(name="stress", version="0.1")
 
     @server.tool(description="Echo")
     async def echo(text: str) -> str:
@@ -82,7 +82,7 @@ async def test_concurrent_sampling_no_deadlock():
     SamplingRequest into write_queue and wait on PendingRequests futures.
     The race loop must pump all of them without deadlocking.
     """
-    server = FasterMCP(name="stress", version="0.1")
+    server = RapidMCP(name="stress", version="0.1")
 
     @server.tool(description="Sample")
     async def do_sample(n: str, ctx: Context) -> str:
@@ -126,7 +126,7 @@ async def test_concurrent_sampling_no_deadlock():
 @pytest.mark.asyncio
 async def test_concurrent_sampling_multiple_clients():
     """5 clients, each running 3 concurrent sampling calls = 15 in-flight samples."""
-    server = FasterMCP(name="stress", version="0.1")
+    server = RapidMCP(name="stress", version="0.1")
 
     @server.tool(description="Sample")
     async def do_sample(label: str, ctx: Context) -> str:
@@ -175,7 +175,7 @@ async def test_concurrent_sampling_multiple_clients():
 @pytest.mark.asyncio
 async def test_broadcast_during_concurrent_tool_calls():
     """Notifications must be delivered even while 20 tool calls are in flight."""
-    server = FasterMCP(name="stress", version="0.1")
+    server = RapidMCP(name="stress", version="0.1")
 
     @server.tool(description="Slow tool")
     async def slow(x: str) -> str:
@@ -216,7 +216,7 @@ async def test_broadcast_during_concurrent_tool_calls():
 @pytest.mark.asyncio
 async def test_fast_tools_not_blocked_by_slow():
     """A fast tool must complete well before a slow tool finishes."""
-    server = FasterMCP(name="stress", version="0.1")
+    server = RapidMCP(name="stress", version="0.1")
 
     @server.tool(description="Slow")
     async def slow(x: str) -> str:
@@ -254,7 +254,7 @@ async def test_fast_tools_not_blocked_by_slow():
 @pytest.mark.asyncio
 async def test_cancellation_under_load():
     """Cancel some in-flight calls while others complete normally."""
-    server = FasterMCP(name="stress", version="0.1")
+    server = RapidMCP(name="stress", version="0.1")
 
     @server.tool(description="Slow")
     async def slow(x: str) -> str:
@@ -302,7 +302,7 @@ async def test_cancellation_under_load():
 @pytest.mark.asyncio
 async def test_high_volume_sequential_no_leak():
     """200 sequential calls on one connection — PendingRequests must not grow."""
-    server = FasterMCP(name="stress", version="0.1")
+    server = RapidMCP(name="stress", version="0.1")
 
     @server.tool(description="Echo")
     async def echo(text: str) -> str:
@@ -327,7 +327,7 @@ async def test_high_volume_sequential_no_leak():
 @pytest.mark.asyncio
 async def test_mixed_concurrent_and_sequential():
     """Combine concurrent and sequential access patterns across 5 clients."""
-    server = FasterMCP(name="stress", version="0.1")
+    server = RapidMCP(name="stress", version="0.1")
 
     @server.tool(description="Echo")
     async def echo(text: str) -> str:

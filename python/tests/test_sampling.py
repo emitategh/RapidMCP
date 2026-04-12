@@ -2,8 +2,8 @@
 
 import pytest
 
-from fastermcp import Client, Context, FasterMCP
-from fastermcp._generated import mcp_pb2
+from rapidmcp import Client, Context, RapidMCP
+from rapidmcp._generated import mcp_pb2
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -27,7 +27,7 @@ def _text_response(*texts: str) -> mcp_pb2.SamplingResponse:
 @pytest.mark.asyncio
 async def test_sample_dict_message_string_content():
     """ctx.sample() wraps a plain-string dict content into a ContentItem list."""
-    app = FasterMCP("t", "1")
+    app = RapidMCP("t", "1")
 
     @app.tool(description="t")
     async def do_sample(ctx: Context) -> str:
@@ -119,7 +119,7 @@ async def test_sample_dict_message_list_content():
 @pytest.fixture
 async def sampling_server():
     """Server whose tool calls ctx.sample() and captures the request."""
-    app = FasterMCP("SamplingTest", "1.0")
+    app = RapidMCP("SamplingTest", "1.0")
     captured_requests: list[mcp_pb2.SamplingRequest] = []
 
     @app.tool(description="Calls sample with model preferences")
@@ -270,7 +270,7 @@ async def test_multi_content_sampling_response(sampling_server):
 @pytest.mark.asyncio
 async def test_tool_use_content_in_sampling_response():
     """SamplingResponse with tool_use ContentItem — fields preserved."""
-    app = FasterMCP("ToolUseSampling", "1.0")
+    app = RapidMCP("ToolUseSampling", "1.0")
 
     @app.tool(description="Inspect tool_use in sampling response")
     async def inspect_tool_use(ctx: Context) -> str:

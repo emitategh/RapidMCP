@@ -5,19 +5,19 @@ import json
 
 import pytest
 
-from fastermcp import (
+from rapidmcp import (
     BoolField,
     Client,
     Context,
     ElicitationResult,
     EnumField,
-    FasterMCP,
+    RapidMCP,
     FloatField,
     IntField,
     StringField,
     build_elicitation_schema,
 )
-from fastermcp._generated import mcp_pb2
+from rapidmcp._generated import mcp_pb2
 
 # ---------------------------------------------------------------------------
 # Unit tests — field descriptors and schema builder
@@ -130,7 +130,7 @@ def test_elicitation_result_cancel():
 @pytest.mark.asyncio
 async def test_elicit_with_fields_builder():
     """ctx.elicit(fields=...) builds schema and returns ElicitationResult."""
-    app = FasterMCP("E", "1")
+    app = RapidMCP("E", "1")
 
     @app.tool(description="Deploy confirm")
     async def deploy(service: str, ctx: Context) -> str:
@@ -173,7 +173,7 @@ async def test_elicit_with_fields_builder():
 @pytest.mark.asyncio
 async def test_elicit_decline_returns_result():
     """Client declining elicitation → ElicitationResult(action='decline')."""
-    app = FasterMCP("E", "1")
+    app = RapidMCP("E", "1")
 
     @app.tool(description="Ask")
     async def ask(ctx: Context) -> str:
@@ -200,7 +200,7 @@ async def test_elicit_decline_returns_result():
 @pytest.mark.asyncio
 async def test_elicit_schema_and_fields_mutual_exclusion():
     """Passing both schema= and fields= raises ValueError."""
-    app = FasterMCP("E", "1")
+    app = RapidMCP("E", "1")
 
     @app.tool(description="t")
     async def bad(ctx: Context) -> str:
@@ -232,7 +232,7 @@ async def test_elicit_schema_and_fields_mutual_exclusion():
 # ---------------------------------------------------------------------------
 
 
-def _register_tools(app: FasterMCP, names: list) -> None:
+def _register_tools(app: RapidMCP, names: list) -> None:
     """Register one tool per name — avoids the closure-in-loop trap."""
     for name in names:
 
@@ -249,7 +249,7 @@ def _register_tools(app: FasterMCP, names: list) -> None:
 @pytest.mark.asyncio
 async def test_pagination_first_page():
     """page_size=2: first page has 2 items and a next_cursor."""
-    app = FasterMCP("Paged", "1.0", page_size=2)
+    app = RapidMCP("Paged", "1.0", page_size=2)
     _register_tools(app, ["alpha", "beta", "gamma"])
 
     async with app:
@@ -262,7 +262,7 @@ async def test_pagination_first_page():
 @pytest.mark.asyncio
 async def test_pagination_follow_cursor():
     """Following next_cursor fetches subsequent pages until exhausted."""
-    app = FasterMCP("Paged", "1.0", page_size=2)
+    app = RapidMCP("Paged", "1.0", page_size=2)
     _register_tools(app, ["alpha", "beta", "gamma", "delta", "epsilon"])
 
     async with app:
@@ -286,7 +286,7 @@ async def test_pagination_follow_cursor():
 @pytest.mark.asyncio
 async def test_pagination_no_page_size_returns_all():
     """Default (page_size=None) still returns all items with no cursor."""
-    app = FasterMCP("NoPaged", "1.0")
+    app = RapidMCP("NoPaged", "1.0")
     _register_tools(app, ["alpha", "beta", "gamma"])
 
     async with app:
@@ -299,7 +299,7 @@ async def test_pagination_no_page_size_returns_all():
 @pytest.mark.asyncio
 async def test_pagination_resources():
     """page_size applies to list_resources too."""
-    app = FasterMCP("Res", "1.0", page_size=2)
+    app = RapidMCP("Res", "1.0", page_size=2)
 
     @app.resource("res://a", description="a")
     async def _a() -> str:
@@ -332,7 +332,7 @@ async def test_pagination_resources():
 @pytest.mark.asyncio
 async def test_read_resource_image_bytes():
     """Resource returning bytes with image/* MIME → ContentItem type=image."""
-    app = FasterMCP("Mime", "1.0")
+    app = RapidMCP("Mime", "1.0")
 
     @app.resource("res://logo", mime_type="image/png")
     async def logo() -> bytes:
@@ -352,7 +352,7 @@ async def test_read_resource_image_bytes():
 @pytest.mark.asyncio
 async def test_read_resource_audio_bytes():
     """Resource returning bytes with audio/* MIME → ContentItem type=audio."""
-    app = FasterMCP("Mime", "1.0")
+    app = RapidMCP("Mime", "1.0")
 
     @app.resource("res://sound", mime_type="audio/mpeg")
     async def sound() -> bytes:
@@ -371,7 +371,7 @@ async def test_read_resource_audio_bytes():
 @pytest.mark.asyncio
 async def test_read_resource_binary_non_image_audio():
     """Resource returning bytes with application/* MIME → ContentItem type=resource."""
-    app = FasterMCP("Mime", "1.0")
+    app = RapidMCP("Mime", "1.0")
 
     @app.resource("res://data", mime_type="application/octet-stream")
     async def data() -> bytes:
@@ -390,7 +390,7 @@ async def test_read_resource_binary_non_image_audio():
 @pytest.mark.asyncio
 async def test_read_resource_text_unchanged():
     """Resource returning str still produces ContentItem type=text."""
-    app = FasterMCP("Mime", "1.0")
+    app = RapidMCP("Mime", "1.0")
 
     @app.resource("res://greeting")
     async def greeting() -> str:
@@ -413,7 +413,7 @@ async def test_read_resource_text_unchanged():
 @pytest.mark.asyncio
 async def test_cancel_in_flight_tool():
     """Cancelling an in-flight tool_id → tool gets CancelledError, error response sent."""
-    app = FasterMCP("Cancel", "1.0")
+    app = RapidMCP("Cancel", "1.0")
     tool_started = asyncio.Event()
 
     @app.tool(description="Slow tool")
@@ -456,7 +456,7 @@ async def test_cancel_in_flight_tool():
 @pytest.mark.asyncio
 async def test_cancel_nonexistent_id_no_crash():
     """Cancelling a request_id that doesn't exist is silently ignored."""
-    app = FasterMCP("Cancel", "1.0")
+    app = RapidMCP("Cancel", "1.0")
 
     @app.tool(description="Echo")
     async def echo(text: str) -> str:

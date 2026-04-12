@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from fastermcp import Audio, Client, FasterMCP, Image, ToolAnnotations
+from rapidmcp import Audio, Client, RapidMCP, Image, ToolAnnotations
 
 # ---------------------------------------------------------------------------
 # Unit tests — content type helpers (no gRPC)
@@ -49,7 +49,7 @@ def test_tool_annotations_defaults():
 
 
 def test_tool_decorator_stores_read_only_hint():
-    app = FasterMCP("test", "1.0")
+    app = RapidMCP("test", "1.0")
 
     @app.tool(description="Safe read", read_only=True)
     async def safe_read() -> str:
@@ -62,7 +62,7 @@ def test_tool_decorator_stores_read_only_hint():
 
 
 def test_tool_decorator_stores_all_hints():
-    app = FasterMCP("test", "1.0")
+    app = RapidMCP("test", "1.0")
 
     @app.tool(
         description="Complex",
@@ -85,7 +85,7 @@ def test_tool_decorator_stores_all_hints():
 
 def test_tool_decorator_no_annotations_when_defaults():
     """When no hint flags are set, annotations should be None."""
-    app = FasterMCP("test", "1.0")
+    app = RapidMCP("test", "1.0")
 
     @app.tool(description="Plain")
     async def plain() -> str:
@@ -95,7 +95,7 @@ def test_tool_decorator_no_annotations_when_defaults():
 
 
 def test_tool_decorator_stores_output_schema():
-    app = FasterMCP("test", "1.0")
+    app = RapidMCP("test", "1.0")
     schema = {"type": "object", "properties": {"result": {"type": "string"}}}
 
     @app.tool(description="Structured", output_schema=schema)
@@ -107,7 +107,7 @@ def test_tool_decorator_stores_output_schema():
 
 
 def test_tool_decorator_empty_output_schema_by_default():
-    app = FasterMCP("test", "1.0")
+    app = RapidMCP("test", "1.0")
 
     @app.tool(description="No schema")
     async def no_schema() -> str:
@@ -123,7 +123,7 @@ def test_tool_decorator_empty_output_schema_by_default():
 
 @pytest.fixture
 async def annotated_server():
-    app = FasterMCP("Annotated", "1.0")
+    app = RapidMCP("Annotated", "1.0")
 
     @app.tool(
         description="Read-only idempotent tool",
@@ -180,7 +180,7 @@ async def test_list_tools_includes_output_schema(annotated_server):
 
 @pytest.fixture
 async def rich_server():
-    app = FasterMCP("Rich", "1.0")
+    app = RapidMCP("Rich", "1.0")
 
     @app.tool(description="Returns an image")
     async def get_image() -> Image:

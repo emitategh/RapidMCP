@@ -1,11 +1,11 @@
-"""fastermcp: gRPC-native MCP (Model Context Protocol) library."""
+"""rapidmcp: gRPC-native MCP (Model Context Protocol) library."""
 
 __version__ = "0.1.0"
 
-from fastermcp.client import Client
-from fastermcp.content import Audio, Image
-from fastermcp.context import Context
-from fastermcp.elicitation import (
+from rapidmcp.client import Client
+from rapidmcp.content import Audio, Image
+from rapidmcp.context import Context
+from rapidmcp.elicitation import (
     BoolField,
     ElicitationField,
     ElicitationResult,
@@ -15,8 +15,8 @@ from fastermcp.elicitation import (
     StringField,
     build_elicitation_schema,
 )
-from fastermcp.errors import McpError, ToolError
-from fastermcp.middleware import (
+from rapidmcp.errors import McpError, ToolError
+from rapidmcp.middleware import (
     LoggingMiddleware,
     Middleware,
     TimeoutMiddleware,
@@ -24,9 +24,9 @@ from fastermcp.middleware import (
     ToolCallContext,
     ValidationMiddleware,
 )
-from fastermcp.server import FasterMCP
-from fastermcp.tools import ToolAnnotations
-from fastermcp.types import (
+from rapidmcp.server import RapidMCP
+from rapidmcp.tools import ToolAnnotations
+from rapidmcp.types import (
     CallToolResult,
     CompleteResult,
     ContentItem,
@@ -54,7 +54,7 @@ __all__ = [
     "ElicitationField",
     "ElicitationResult",
     "EnumField",
-    "FasterMCP",
+    "RapidMCP",
     "FloatField",
     "GetPromptResult",
     "Image",

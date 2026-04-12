@@ -1,4 +1,4 @@
-"""Elicitation schema builders and result type for FasterMCP."""
+"""Elicitation schema builders and result type for RapidMCP."""
 
 from __future__ import annotations
 

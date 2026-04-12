@@ -2,11 +2,11 @@ import json
 
 import pytest
 
-from fastermcp.server import FasterMCP
+from rapidmcp.server import RapidMCP
 
 
 def test_register_tool():
-    server = FasterMCP(name="test", version="0.1")
+    server = RapidMCP(name="test", version="0.1")
 
     @server.tool(description="Echo text back")
     async def echo(text: str) -> str:
@@ -20,7 +20,7 @@ def test_register_tool():
 
 
 def test_register_resource():
-    server = FasterMCP(name="test", version="0.1")
+    server = RapidMCP(name="test", version="0.1")
 
     @server.resource(uri="res://config", description="App config")
     async def config() -> str:
@@ -32,7 +32,7 @@ def test_register_resource():
 
 
 def test_register_prompt():
-    server = FasterMCP(name="test", version="0.1")
+    server = RapidMCP(name="test", version="0.1")
 
     @server.prompt(description="Greet the user")
     async def greet(name: str) -> str:
@@ -44,7 +44,7 @@ def test_register_prompt():
 
 
 def test_register_resource_template():
-    server = FasterMCP(name="test", version="0.1")
+    server = RapidMCP(name="test", version="0.1")
 
     @server.resource_template(
         uri_template="file:///{path}",
@@ -61,7 +61,7 @@ def test_register_resource_template():
 
 @pytest.mark.asyncio
 async def test_call_tool_handler():
-    server = FasterMCP(name="test", version="0.1")
+    server = RapidMCP(name="test", version="0.1")
 
     @server.tool(description="Echo text back")
     async def echo(text: str) -> str:
@@ -74,9 +74,9 @@ async def test_call_tool_handler():
 
 @pytest.mark.asyncio
 async def test_call_unknown_tool():
-    server = FasterMCP(name="test", version="0.1")
+    server = RapidMCP(name="test", version="0.1")
 
-    from fastermcp.errors import McpError
+    from rapidmcp.errors import McpError
 
     with pytest.raises(McpError, match="not found"):
         await server.handle_call_tool("nonexistent", "{}")
@@ -84,9 +84,9 @@ async def test_call_unknown_tool():
 
 def test_tool_context_excluded_from_schema():
     """Context parameter should not appear in input_schema."""
-    from fastermcp.context import Context
+    from rapidmcp.context import Context
 
-    server = FasterMCP(name="test", version="0.1")
+    server = RapidMCP(name="test", version="0.1")
 
     @server.tool(description="Summarize with LLM")
     async def summarize(text: str, ctx: Context) -> str:
@@ -101,7 +101,7 @@ def test_tool_context_excluded_from_schema():
 
 
 def test_tool_without_context_has_no_needs_context():
-    server = FasterMCP(name="test", version="0.1")
+    server = RapidMCP(name="test", version="0.1")
 
     @server.tool(description="Echo")
     async def echo(text: str) -> str:
@@ -116,11 +116,11 @@ async def test_tool_context_injection():
     """Tool handler receives a Context when type-hinted."""
     import asyncio
 
-    from fastermcp._generated import mcp_pb2
-    from fastermcp.context import Context
-    from fastermcp.session import PendingRequests
+    from rapidmcp._generated import mcp_pb2
+    from rapidmcp.context import Context
+    from rapidmcp.session import PendingRequests
 
-    server = FasterMCP(name="test", version="0.1")
+    server = RapidMCP(name="test", version="0.1")
     received_ctx = []
 
     @server.tool(description="Check ctx")
@@ -144,7 +144,7 @@ async def test_tool_context_injection():
 
 def test_tool_docstring_description():
     """@mcp.tool() infers description from docstring."""
-    mcp = FasterMCP(name="test", version="0.1")
+    mcp = RapidMCP(name="test", version="0.1")
 
     @mcp.tool()
     async def echo(text: str) -> str:
@@ -159,7 +159,7 @@ def test_tool_docstring_description():
 
 def test_tool_no_docstring_no_description():
     """@mcp.tool() with no docstring and no description uses empty string."""
-    mcp = FasterMCP(name="test", version="0.1")
+    mcp = RapidMCP(name="test", version="0.1")
 
     @mcp.tool()
     async def echo(text: str) -> str:
@@ -171,7 +171,7 @@ def test_tool_no_docstring_no_description():
 
 def test_prompt_docstring_description():
     """@mcp.prompt() infers description from docstring."""
-    mcp = FasterMCP(name="test", version="0.1")
+    mcp = RapidMCP(name="test", version="0.1")
 
     @mcp.prompt()
     async def greet(name: str) -> str:
@@ -185,7 +185,7 @@ def test_prompt_docstring_description():
 
 def test_resource_optional_description():
     """@mcp.resource(uri) without description infers from docstring."""
-    mcp = FasterMCP(name="test", version="0.1")
+    mcp = RapidMCP(name="test", version="0.1")
 
     @mcp.resource("res://config")
     async def config() -> str:
@@ -199,7 +199,7 @@ def test_resource_optional_description():
 
 def test_resource_template_optional_description():
     """@mcp.resource_template(uri) without description infers from docstring."""
-    mcp = FasterMCP(name="test", version="0.1")
+    mcp = RapidMCP(name="test", version="0.1")
 
     @mcp.resource_template("file:///{path}")
     async def read_file(path: str) -> str:
@@ -213,7 +213,7 @@ def test_resource_template_optional_description():
 
 def test_tool_explicit_description_overrides_docstring():
     """Explicit description= kwarg wins over docstring."""
-    mcp = FasterMCP(name="test", version="0.1")
+    mcp = RapidMCP(name="test", version="0.1")
 
     @mcp.tool(description="Override")
     async def echo(text: str) -> str:
@@ -226,7 +226,7 @@ def test_tool_explicit_description_overrides_docstring():
 
 def test_prompt_explicit_description_overrides_docstring():
     """Explicit description= kwarg wins over docstring."""
-    mcp = FasterMCP(name="test", version="0.1")
+    mcp = RapidMCP(name="test", version="0.1")
 
     @mcp.prompt(description="Override")
     async def greet(name: str) -> str:
@@ -242,9 +242,9 @@ async def test_ctx_info_puts_log_notification():
     import asyncio
     import json
 
-    from fastermcp._generated import mcp_pb2
-    from fastermcp.context import Context
-    from fastermcp.session import PendingRequests
+    from rapidmcp._generated import mcp_pb2
+    from rapidmcp.context import Context
+    from rapidmcp.session import PendingRequests
 
     queue = asyncio.Queue()
     ctx = Context(
@@ -268,9 +268,9 @@ async def test_ctx_debug_puts_correct_level():
     import asyncio
     import json
 
-    from fastermcp._generated import mcp_pb2
-    from fastermcp.context import Context
-    from fastermcp.session import PendingRequests
+    from rapidmcp._generated import mcp_pb2
+    from rapidmcp.context import Context
+    from rapidmcp.session import PendingRequests
 
     queue = asyncio.Queue()
     ctx = Context(
@@ -288,9 +288,9 @@ async def test_ctx_warning_puts_correct_level():
     import asyncio
     import json
 
-    from fastermcp._generated import mcp_pb2
-    from fastermcp.context import Context
-    from fastermcp.session import PendingRequests
+    from rapidmcp._generated import mcp_pb2
+    from rapidmcp.context import Context
+    from rapidmcp.session import PendingRequests
 
     queue = asyncio.Queue()
     ctx = Context(
@@ -308,9 +308,9 @@ async def test_ctx_error_puts_correct_level():
     import asyncio
     import json
 
-    from fastermcp._generated import mcp_pb2
-    from fastermcp.context import Context
-    from fastermcp.session import PendingRequests
+    from rapidmcp._generated import mcp_pb2
+    from rapidmcp.context import Context
+    from rapidmcp.session import PendingRequests
 
     queue = asyncio.Queue()
     ctx = Context(
@@ -328,9 +328,9 @@ async def test_ctx_info_with_extra():
     import asyncio
     import json
 
-    from fastermcp._generated import mcp_pb2
-    from fastermcp.context import Context
-    from fastermcp.session import PendingRequests
+    from rapidmcp._generated import mcp_pb2
+    from rapidmcp.context import Context
+    from rapidmcp.session import PendingRequests
 
     queue = asyncio.Queue()
     ctx = Context(
@@ -348,9 +348,9 @@ async def test_ctx_debug_with_extra():
     import asyncio
     import json
 
-    from fastermcp._generated import mcp_pb2
-    from fastermcp.context import Context
-    from fastermcp.session import PendingRequests
+    from rapidmcp._generated import mcp_pb2
+    from rapidmcp.context import Context
+    from rapidmcp.session import PendingRequests
 
     queue = asyncio.Queue()
     ctx = Context(
@@ -369,9 +369,9 @@ async def test_ctx_report_progress_with_total():
     import asyncio
     import json
 
-    from fastermcp._generated import mcp_pb2
-    from fastermcp.context import Context
-    from fastermcp.session import PendingRequests
+    from rapidmcp._generated import mcp_pb2
+    from rapidmcp.context import Context
+    from rapidmcp.session import PendingRequests
 
     queue = asyncio.Queue()
     ctx = Context(
@@ -393,7 +393,7 @@ def test_future_annotations_context_detection():
     """Tools defined in modules with `from __future__ import annotations` still detect Context."""
     from _future_annotations_helper import register_tool_with_future_annotations
 
-    server = FasterMCP(name="test", version="0.1")
+    server = RapidMCP(name="test", version="0.1")
     register_tool_with_future_annotations(server)
 
     tools = server.list_registered_tools()
@@ -412,11 +412,11 @@ async def test_future_annotations_context_injection():
 
     from _future_annotations_helper import register_tool_with_future_annotations
 
-    from fastermcp._generated import mcp_pb2
-    from fastermcp.context import Context
-    from fastermcp.session import PendingRequests
+    from rapidmcp._generated import mcp_pb2
+    from rapidmcp.context import Context
+    from rapidmcp.session import PendingRequests
 
-    server = FasterMCP(name="test", version="0.1")
+    server = RapidMCP(name="test", version="0.1")
     register_tool_with_future_annotations(server)
 
     result = await server.handle_call_tool(
@@ -437,9 +437,9 @@ async def test_ctx_report_progress_without_total():
     import asyncio
     import json
 
-    from fastermcp._generated import mcp_pb2
-    from fastermcp.context import Context
-    from fastermcp.session import PendingRequests
+    from rapidmcp._generated import mcp_pb2
+    from rapidmcp.context import Context
+    from rapidmcp.session import PendingRequests
 
     queue = asyncio.Queue()
     ctx = Context(
@@ -461,10 +461,10 @@ async def test_ctx_report_progress_without_total():
 @pytest.mark.asyncio
 async def test_tool_returning_none_gives_empty_content():
     """A tool that returns None should produce an empty content list (not 'None' string)."""
-    from fastermcp import FasterMCP
-    from fastermcp.testing import InProcessChannel
+    from rapidmcp import RapidMCP
+    from rapidmcp.testing import InProcessChannel
 
-    server = FasterMCP(name="none-server", version="0.1")
+    server = RapidMCP(name="none-server", version="0.1")
 
     @server.tool(description="Does nothing")
     async def do_nothing() -> None:

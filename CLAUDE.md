@@ -1,4 +1,4 @@
-# FasterMCP — Project Context
+# RapidMCP — Project Context
 
 ## What this is
 
@@ -30,16 +30,16 @@ uv run ty check              # type check (non-blocking)
 ## Public API (current)
 
 ```python
-from fastermcp import FasterMCP, Client, Context
-from fastermcp import Middleware, ToolCallContext, TimingMiddleware, LoggingMiddleware
-from fastermcp import TimeoutMiddleware, ValidationMiddleware, ToolAnnotations
-from fastermcp import Audio, Image
-from fastermcp import (
+from rapidmcp import RapidMCP, Client, Context
+from rapidmcp import Middleware, ToolCallContext, TimingMiddleware, LoggingMiddleware
+from rapidmcp import TimeoutMiddleware, ValidationMiddleware, ToolAnnotations
+from rapidmcp import Audio, Image
+from rapidmcp import (
     BoolField, ElicitationField, ElicitationResult,
     EnumField, FloatField, IntField, StringField, build_elicitation_schema,
 )
-from fastermcp.errors import McpError, ToolError
-from fastermcp.integrations.livekit import MCPServerGRPC  # livekit-agents MCPServer adapter
+from rapidmcp.errors import McpError, ToolError
+from rapidmcp.integrations.livekit import MCPServerGRPC  # livekit-agents MCPServer adapter
 ```
 
 ## Project structure
@@ -47,8 +47,8 @@ from fastermcp.integrations.livekit import MCPServerGRPC  # livekit-agents MCPSe
 ```
 proto/mcp.proto                    ← single source of truth for all messages
 python/
-  src/fastermcp/
-    server.py                      ← FasterMCP, mount(), decorators
+  src/rapidmcp/
+    server.py                      ← RapidMCP, mount(), decorators
     _servicer.py                   ← _McpServicer (gRPC session handler)
     client.py                      ← Client, ListResult, sampling/elicitation/roots handlers
     context.py                     ← Context (explicit DI per tool call)
@@ -58,7 +58,7 @@ python/
     errors.py                      ← McpError, ToolError
     content.py                     ← Audio, Image content helpers
     elicitation.py                 ← ElicitationField types, build_elicitation_schema
-    cli.py                         ← `fastermcp run server.py` CLI entry point
+    cli.py                         ← `rapidmcp run server.py` CLI entry point
     testing.py                     ← InProcessChannel for unit tests
     tools/                         ← ToolManager, ToolAnnotations, Tool
     resources/                     ← ResourceManager, Resource
@@ -86,7 +86,7 @@ benchmark/                         ← latency harness vs FastMCP HTTP
 - Full MCP spec parity: tools, resources, resource templates, prompts, completions, pagination, sampling, elicitation, logging, progress, notifications (bidirectional), cancellation, resource subscribe, roots, capability negotiation, ping/pong
 - Middleware system: `Middleware` base class, `ToolCallContext`, `functools.partial` chain, built-ins: `TimingMiddleware`, `LoggingMiddleware`, `TimeoutMiddleware`, `ValidationMiddleware`
 - Server composition: `main.mount(sub, prefix="x")` — merges tools/resources/prompts with prefix
-- CLI: `fastermcp run server.py` / `fastermcp run server.py:my_app` / `fastermcp version`
+- CLI: `rapidmcp run server.py` / `rapidmcp run server.py:my_app` / `rapidmcp version`
 - LiveKit integration: `MCPServerGRPC` adapter for `livekit-agents`
 - Rich elicitation helpers: typed field builders (`BoolField`, `IntField`, `StringField`, `EnumField`, `FloatField`)
 - Content helpers: `Audio`, `Image` for binary content in tool responses
@@ -95,7 +95,7 @@ benchmark/                         ← latency harness vs FastMCP HTTP
 
 - **One service, one bidi streaming RPC.** `Session(stream ClientEnvelope) returns (stream ServerEnvelope)` — all messages over one stream.
 - **Write-queue servicer.** Concurrent reader/writer tasks per session. Enables server push notifications, mid-handler sampling/elicitation, and concurrent tool execution.
-- **Context as explicit DI.** `ctx: Context` is injected only when a tool declares it. Unlike FastMCP which pulls Context from a ContextVar set by the JSON-RPC run loop, FasterMCP's Context is constructed per-call and passed explicitly — so `ToolCallContext.ctx` is `None` for tools that didn't opt in.
+- **Context as explicit DI.** `ctx: Context` is injected only when a tool declares it. Unlike FastMCP which pulls Context from a ContextVar set by the JSON-RPC run loop, RapidMCP's Context is constructed per-call and passed explicitly — so `ToolCallContext.ctx` is `None` for tools that didn't opt in.
 - **Middleware chain.** `functools.partial` reversed registration order. First-registered = outermost. Base of chain is `_call_tool_with_dict`.
 - **Manager packages.** `tools/`, `resources/`, `prompts/` are each a sub-package with a `Manager` class and a domain object. `_McpServicer` delegates to them; `server.py` registers decorators through them.
 
@@ -106,6 +106,6 @@ benchmark/                         ← latency harness vs FastMCP HTTP
 | ~~1~~ | Integration test gaps | ✅ Done |
 | ~~2~~ | Middleware system | ✅ Done |
 | ~~3~~ | Server mounting / composition | ✅ Done |
-| ~~4~~ | CLI (`fastermcp run server.py`) | ✅ Done |
+| ~~4~~ | CLI (`rapidmcp run server.py`) | ✅ Done |
 | 5 | PyPI package / versioning | Next |
 | 6 | Multi-language client stubs (TypeScript, Go) | Backlog |

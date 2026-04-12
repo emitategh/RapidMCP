@@ -3,11 +3,11 @@
 import asyncio
 import sys
 
-from fastermcp import FasterMCP
+from rapidmcp import RapidMCP
 
 port = int(sys.argv[1]) if len(sys.argv) > 1 else 50051
 
-server = FasterMCP(name="docker-echo", version="0.1")
+server = RapidMCP(name="docker-echo", version="0.1")
 
 
 @server.tool(description="Echo")

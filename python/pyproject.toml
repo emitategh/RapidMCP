@@ -1,5 +1,5 @@
 [project]
-name = "fastermcp"
+name = "rapidmcp"
 version = "0.1.0"
 description = "gRPC-native MCP (Model Context Protocol) library — ~17x lower latency than HTTP transports"
 readme = "README.md"
@@ -46,7 +46,7 @@ dev = [
 ]
 
 [project.scripts]
-fastermcp = "fastermcp.cli:main"
+rapidmcp = "rapidmcp.cli:main"
 
 [build-system]
 requires = ["setuptools>=61.0"]
@@ -56,8 +56,8 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-"fastermcp" = ["py.typed"]
-"fastermcp._generated" = ["*.pyi"]
+"rapidmcp" = ["py.typed"]
+"rapidmcp._generated" = ["*.pyi"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -66,7 +66,7 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
-exclude = ["src/fastermcp/_generated"]
+exclude = ["src/rapidmcp/_generated"]
 
 [tool.ruff.lint]
 select = [
@@ -84,7 +84,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["fastermcp"]
+known-first-party = ["rapidmcp"]
 
 [tool.ruff.format]
 quote-style = "double"

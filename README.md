@@ -1,12 +1,12 @@
-# FasterMCP
+# RapidMCP
 
 > **Experimental.** This project is a proof-of-concept exploring gRPC as an MCP transport. The API may change without notice and it is not recommended for production use.
 
 **MCP over native gRPC.** ~17x lower latency than Streamable HTTP.
 
-FasterMCP is a gRPC-native transport for the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP). Instead of JSON-RPC over HTTP, it uses protobuf messages over a persistent bidirectional gRPC stream — the same MCP semantics (tools, resources, prompts, sampling, elicitation), a fundamentally faster wire format.
+RapidMCP is a gRPC-native transport for the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP). Instead of JSON-RPC over HTTP, it uses protobuf messages over a persistent bidirectional gRPC stream — the same MCP semantics (tools, resources, prompts, sampling, elicitation), a fundamentally faster wire format.
 
-| | MCP (stdio / Streamable HTTP) | FasterMCP (gRPC) |
+| | MCP (stdio / Streamable HTTP) | RapidMCP (gRPC) |
 |---|---|---|
 | Wire format | JSON-RPC over text | Protobuf binary |
 | Connection model | HTTP request per call | Persistent bidi stream |
@@ -17,14 +17,14 @@ FasterMCP is a gRPC-native transport for the [Model Context Protocol](https://mo
 ## Installation
 
 ```bash
-pip install fastermcp
+pip install rapidmcp
 ```
 
 Optional integrations:
 
 ```bash
-pip install 'fastermcp[langchain]'   # LangChain / LangGraph
-pip install 'fastermcp[livekit]'     # livekit-agents
+pip install 'rapidmcp[langchain]'   # LangChain / LangGraph
+pip install 'rapidmcp[livekit]'     # livekit-agents
 ```
 
 ## Quick start
@@ -32,9 +32,9 @@ pip install 'fastermcp[livekit]'     # livekit-agents
 ### Server
 
 ```python
-from fastermcp import FasterMCP
+from rapidmcp import RapidMCP
 
-server = FasterMCP(name="my-server", version="1.0.0")
+server = RapidMCP(name="my-server", version="1.0.0")
 
 @server.tool(description="Echo the input back")
 async def echo(text: str) -> str:
@@ -46,7 +46,7 @@ server.run(port=50051)
 ### Client
 
 ```python
-from fastermcp import Client
+from rapidmcp import Client
 
 async with Client("localhost:50051") as client:
     result = await client.list_tools()
@@ -59,7 +59,7 @@ async with Client("localhost:50051") as client:
 ### LangChain / LangGraph integration
 
 ```python
-from fastermcp.integrations.langchain import MCPToolkit
+from rapidmcp.integrations.langchain import MCPToolkit
 from langchain_anthropic import ChatAnthropic
 from langgraph.prebuilt import create_react_agent
 
@@ -72,7 +72,7 @@ async with MCPToolkit("localhost:50051") as toolkit:
 ### LiveKit integration
 
 ```python
-from fastermcp.integrations.livekit import MCPServerGRPC
+from rapidmcp.integrations.livekit import MCPServerGRPC
 from livekit.agents import AgentSession
 
 session = AgentSession(
@@ -83,9 +83,9 @@ session = AgentSession(
 ### Middleware
 
 ```python
-from fastermcp import FasterMCP, TimingMiddleware, LoggingMiddleware, TimeoutMiddleware, ValidationMiddleware
+from rapidmcp import RapidMCP, TimingMiddleware, LoggingMiddleware, TimeoutMiddleware, ValidationMiddleware
 
-server = FasterMCP(name="my-server", version="1.0.0", middleware=[
+server = RapidMCP(name="my-server", version="1.0.0", middleware=[
     TimingMiddleware(),              # logs "echo completed in 0.52ms"
     LoggingMiddleware(),             # logs args before, is_error after
     TimeoutMiddleware(seconds=5.0),  # raises ToolError on timeout
@@ -96,9 +96,9 @@ server = FasterMCP(name="my-server", version="1.0.0", middleware=[
 ### Sampling (LLM completion mid-tool)
 
 ```python
-from fastermcp import FasterMCP, Context
+from rapidmcp import RapidMCP, Context
 
-server = FasterMCP(name="my-server", version="1.0.0")
+server = RapidMCP(name="my-server", version="1.0.0")
 
 @server.tool(description="Summarize text using LLM")
 async def summarize(text: str, ctx: Context) -> str:
@@ -112,9 +112,9 @@ async def summarize(text: str, ctx: Context) -> str:
 ### Elicitation (user input mid-tool)
 
 ```python
-from fastermcp import FasterMCP, Context, BoolField
+from rapidmcp import RapidMCP, Context, BoolField
 
-server = FasterMCP(name="my-server", version="1.0.0")
+server = RapidMCP(name="my-server", version="1.0.0")
 
 @server.tool(description="Deploy to production")
 async def deploy(service: str, ctx: Context) -> str:
@@ -132,15 +132,15 @@ Available field types: `BoolField`, `StringField`, `IntField`, `FloatField`, `En
 ### Server composition (mounting)
 
 ```python
-from fastermcp import FasterMCP
+from rapidmcp import RapidMCP
 
-users_server = FasterMCP("Users", "1.0")
+users_server = RapidMCP("Users", "1.0")
 
 @users_server.tool(description="Get a user by ID")
 async def get_user(id: int) -> str:
     return f"user:{id}"
 
-main = FasterMCP("Main", "1.0")
+main = RapidMCP("Main", "1.0")
 main.mount(users_server, prefix="users")
 # Tool becomes: "users_get_user"
 
@@ -150,10 +150,10 @@ main.run(port=50051)
 ### CLI
 
 ```bash
-fastermcp run server.py           # auto-discovers `server`, `app`, or `mcp` object
-fastermcp run server.py:my_app    # explicit object name
-fastermcp run server.py --port 8080
-fastermcp version
+rapidmcp run server.py           # auto-discovers `server`, `app`, or `mcp` object
+rapidmcp run server.py:my_app    # explicit object name
+rapidmcp run server.py --port 8080
+rapidmcp version
 ```
 
 ## Full MCP feature support
@@ -177,13 +177,13 @@ fastermcp version
 | Ping/Pong | ✅ |
 | Middleware (`on_tool_call` chain) | ✅ |
 | Server mounting / composition | ✅ |
-| CLI (`fastermcp run server.py`) | ✅ |
+| CLI (`rapidmcp run server.py`) | ✅ |
 | LangChain / LangGraph integration | ✅ |
 | LiveKit integration | ✅ |
 
-## Benchmark: FasterMCP vs FastMCP (Streamable HTTP)
+## Benchmark: RapidMCP vs FastMCP (Streamable HTTP)
 
-A latency benchmark comparing FasterMCP (gRPC) against [FastMCP](https://gofastmcp.com/) (Streamable HTTP). Both servers run the same `echo` tool — the difference is purely transport overhead.
+A latency benchmark comparing RapidMCP (gRPC) against [FastMCP](https://gofastmcp.com/) (Streamable HTTP). Both servers run the same `echo` tool — the difference is purely transport overhead.
 
 ```bash
 cd benchmark
@@ -196,11 +196,11 @@ uv run python run_benchmark.py
 ```
 Transport             p50      p95      p99      min      max     mean    stdev
 -------------------------------------------------------------------------------
-FasterMCP (gRPC)    0.55ms    0.70ms    0.81ms    0.42ms    1.18ms    0.58ms    0.09ms
+RapidMCP (gRPC)    0.55ms    0.70ms    0.81ms    0.42ms    1.18ms    0.58ms    0.09ms
 FastMCP (HTTP)      9.68ms   14.06ms   18.22ms    7.59ms   35.72ms   10.40ms    3.20ms
 ```
 
-**FasterMCP is ~17x faster at p50 and ~22x faster at p99.**
+**RapidMCP is ~17x faster at p50 and ~22x faster at p99.**
 
 ## Project structure
 
@@ -208,14 +208,14 @@ FastMCP (HTTP)      9.68ms   14.06ms   18.22ms    7.59ms   35.72ms   10.40ms    
 mcp-grpc/
 ├── proto/mcp.proto              ← Protocol definition (single source of truth)
 ├── python/
-│   ├── src/fastermcp/
-│   │   ├── server.py            ← FasterMCP, mount(), decorators
+│   ├── src/rapidmcp/
+│   │   ├── server.py            ← RapidMCP, mount(), decorators
 │   │   ├── _servicer.py         ← gRPC session handler
 │   │   ├── client.py            ← Client, sampling/elicitation/roots handlers
 │   │   ├── context.py           ← Context (injected per tool call)
 │   │   ├── middleware.py        ← Middleware chain + built-ins
 │   │   ├── elicitation.py       ← BoolField, IntField, StringField, …
-│   │   ├── cli.py               ← `fastermcp run` entry point
+│   │   ├── cli.py               ← `rapidmcp run` entry point
 │   │   ├── tools/               ← ToolManager, ToolAnnotations
 │   │   ├── resources/           ← ResourceManager, URI template matching
 │   │   ├── prompts/             ← PromptManager

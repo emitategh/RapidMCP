@@ -1,13 +1,13 @@
 """LiveKit integration — MCPServerGRPC for livekit-agents.
 
-MCPServerGRPC is a livekit ``MCPServer`` backed by a FasterMCP gRPC server.
+MCPServerGRPC is a livekit ``MCPServer`` backed by a RapidMCP gRPC server.
 It is the gRPC counterpart to ``MCPServerHTTP`` and is used with the standard
 ``MCPToolset``.
 
 Usage::
 
     from livekit.agents.llm.mcp import MCPToolset, MCPServerHTTP
-    from fastermcp.integrations.livekit import MCPServerGRPC
+    from rapidmcp.integrations.livekit import MCPServerGRPC
 
     session = AgentSession(
         tools=[
@@ -26,7 +26,7 @@ import contextlib
 import logging
 from typing import Any
 
-from fastermcp.client import Client
+from rapidmcp.client import Client
 
 logger = logging.getLogger(__name__)
 

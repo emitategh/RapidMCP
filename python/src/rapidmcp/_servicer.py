@@ -9,21 +9,21 @@ import time
 import uuid
 from typing import TYPE_CHECKING
 
-from fastermcp._generated import mcp_pb2, mcp_pb2_grpc
-from fastermcp._utils import _paginate
-from fastermcp.context import Context
-from fastermcp.errors import McpError
-from fastermcp.resources.uri_template import match_uri_template
-from fastermcp.session import PendingRequests
+from rapidmcp._generated import mcp_pb2, mcp_pb2_grpc
+from rapidmcp._utils import _paginate
+from rapidmcp.context import Context
+from rapidmcp.errors import McpError
+from rapidmcp.resources.uri_template import match_uri_template
+from rapidmcp.session import PendingRequests
 
 if TYPE_CHECKING:
-    from fastermcp.server import FasterMCP
+    from rapidmcp.server import RapidMCP
 
-logger = logging.getLogger("fastermcp.server")
+logger = logging.getLogger("rapidmcp.server")
 
 
 class _McpServicer(mcp_pb2_grpc.McpServicer):
-    def __init__(self, server: FasterMCP) -> None:
+    def __init__(self, server: RapidMCP) -> None:
         self._server = server
 
     async def Session(self, request_iterator, context):

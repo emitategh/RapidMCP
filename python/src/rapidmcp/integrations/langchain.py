@@ -1,11 +1,11 @@
-"""LangChain integration — MCPToolkit for FasterMCP gRPC servers.
+"""LangChain integration — MCPToolkit for RapidMCP gRPC servers.
 
-``MCPToolkit`` fetches tools from a FasterMCP gRPC server and returns them as
+``MCPToolkit`` fetches tools from a RapidMCP gRPC server and returns them as
 LangChain ``StructuredTool`` instances ready for use with any LangChain agent.
 
 Usage::
 
-    from fastermcp.integrations.langchain import MCPToolkit
+    from rapidmcp.integrations.langchain import MCPToolkit
 
     async with MCPToolkit("mcp-server:50051") as toolkit:
         tools = await toolkit.aget_tools()
@@ -28,8 +28,8 @@ import base64
 import logging
 from typing import Any
 
-from fastermcp.client import Client
-from fastermcp.types import CallToolResult, Tool
+from rapidmcp.client import Client
+from rapidmcp.types import CallToolResult, Tool
 
 logger = logging.getLogger(__name__)
 
@@ -196,7 +196,7 @@ def _make_tool(client: Client, mcp_tool: Tool) -> BaseTool:
 
 
 class MCPToolkit:
-    """LangChain toolkit backed by a FasterMCP gRPC server.
+    """LangChain toolkit backed by a RapidMCP gRPC server.
 
     Fetches the server's tool list (with automatic pagination) and returns each
     tool as a LangChain ``StructuredTool``.  Use as an async context manager to
@@ -225,7 +225,7 @@ class MCPToolkit:
 
     @property
     def client(self) -> Client:
-        """The underlying :class:`~fastermcp.client.Client` instance."""
+        """The underlying :class:`~rapidmcp.client.Client` instance."""
         return self._client
 
     async def aget_tools(self) -> list[BaseTool]:

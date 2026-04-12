@@ -1,25 +1,25 @@
-# FasterMCP
+# RapidMCP
 
 > **Experimental.** This project is a proof-of-concept exploring gRPC as an MCP transport. The API may change without notice and it is not recommended for production use.
 
 gRPC-native [MCP (Model Context Protocol)](https://modelcontextprotocol.io) library for Python. Uses protobuf over a persistent bidirectional gRPC stream instead of JSON-RPC over HTTP — **~17x lower latency** than FastMCP Streamable HTTP on local connections.
 
 ```
-pip install fastermcp
+pip install rapidmcp
 ```
 
 ## Why gRPC?
 
-Standard MCP transports (SSE, Streamable HTTP) open a new HTTP connection per tool call. FasterMCP keeps one persistent bidirectional stream open for the entire session — tool calls, sampling, elicitation, notifications, and progress all flow over the same connection.
+Standard MCP transports (SSE, Streamable HTTP) open a new HTTP connection per tool call. RapidMCP keeps one persistent bidirectional stream open for the entire session — tool calls, sampling, elicitation, notifications, and progress all flow over the same connection.
 
 ## Quick start
 
 ### Server
 
 ```python
-from fastermcp import FasterMCP, Context
+from rapidmcp import RapidMCP, Context
 
-server = FasterMCP(name="my-server", version="1.0.0")
+server = RapidMCP(name="my-server", version="1.0.0")
 
 @server.tool(description="Add two numbers")
 async def add(a: float, b: float) -> str:
@@ -27,7 +27,7 @@ async def add(a: float, b: float) -> str:
 
 @server.tool(description="Confirm an action before running it")
 async def confirm_delete(path: str, ctx: Context) -> str:
-    from fastermcp import BoolField
+    from rapidmcp import BoolField
     result = await ctx.elicit(
         message=f"Delete {path}?",
         fields={"confirm": BoolField(title="Confirm deletion")},
@@ -56,7 +56,7 @@ if __name__ == "__main__":
 
 ```python
 import asyncio
-from fastermcp import Client
+from rapidmcp import Client
 
 async def main():
     async with Client("localhost:50051") as client:
@@ -77,7 +77,7 @@ asyncio.run(main())
 ### LangChain integration
 
 ```python
-from fastermcp.integrations.langchain import MCPToolkit
+from rapidmcp.integrations.langchain import MCPToolkit
 from langchain_anthropic import ChatAnthropic
 from langgraph.prebuilt import create_react_agent
 
@@ -88,14 +88,14 @@ async with MCPToolkit("localhost:50051") as toolkit:
 ```
 
 ```
-pip install 'fastermcp[langchain]'
+pip install 'rapidmcp[langchain]'
 ```
 
 ### LiveKit integration
 
 ```python
 from livekit.agents.llm.mcp import MCPToolset
-from fastermcp.integrations.livekit import MCPServerGRPC
+from rapidmcp.integrations.livekit import MCPServerGRPC
 
 session = AgentSession(
     tools=[MCPToolset(id="tools", mcp_server=MCPServerGRPC(address="localhost:50051"))],
@@ -103,7 +103,7 @@ session = AgentSession(
 ```
 
 ```
-pip install 'fastermcp[livekit]'
+pip install 'rapidmcp[livekit]'
 ```
 
 ## Full MCP spec coverage
@@ -121,14 +121,14 @@ pip install 'fastermcp[livekit]'
 | Pagination | cursor-based on all list endpoints |
 | Cancellation | in-flight request cancellation |
 | Server composition | `server.mount(sub, prefix="x")` |
-| CLI | `fastermcp run server.py` |
+| CLI | `rapidmcp run server.py` |
 
 ## Middleware
 
 ```python
-from fastermcp import FasterMCP, TimingMiddleware, LoggingMiddleware, TimeoutMiddleware
+from rapidmcp import RapidMCP, TimingMiddleware, LoggingMiddleware, TimeoutMiddleware
 
-server = FasterMCP(
+server = RapidMCP(
     name="my-server",
     version="1.0.0",
     middleware=[
@@ -142,9 +142,9 @@ server = FasterMCP(
 ## CLI
 
 ```bash
-fastermcp run server.py           # run server.py:server (auto-detected)
-fastermcp run server.py:my_app   # explicit app name
-fastermcp version
+rapidmcp run server.py           # run server.py:server (auto-detected)
+rapidmcp run server.py:my_app   # explicit app name
+rapidmcp version
 ```
 
 ## Requirements

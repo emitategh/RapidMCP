@@ -1,4 +1,4 @@
-# python/src/fastermcp/_utils.py
+# python/src/rapidmcp/_utils.py
 """Shared low-level helpers used across multiple modules."""
 
 from __future__ import annotations
@@ -6,8 +6,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from fastermcp._generated import mcp_pb2
-from fastermcp.content import Audio, Image
+from rapidmcp._generated import mcp_pb2
+from rapidmcp.content import Audio, Image
 
 
 def _to_content_items(result: Any) -> list[mcp_pb2.ContentItem]:

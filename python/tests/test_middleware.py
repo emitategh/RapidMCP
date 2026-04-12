@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from fastermcp import Client, FasterMCP
-from fastermcp._generated import mcp_pb2
-from fastermcp.middleware import CallNext, Middleware, ToolCallContext
+from rapidmcp import Client, RapidMCP
+from rapidmcp._generated import mcp_pb2
+from rapidmcp.middleware import CallNext, Middleware, ToolCallContext
 
 
 def _ok(text: str) -> mcp_pb2.CallToolResponse:
@@ -56,7 +56,7 @@ async def test_middleware_intercepts_tool_call():
             calls.append(("after", tool_ctx.tool_name))
             return result
 
-    server = FasterMCP(name="mw-server", version="0.1", middleware=[RecordingMiddleware()])
+    server = RapidMCP(name="mw-server", version="0.1", middleware=[RecordingMiddleware()])
 
     @server.tool(description="Echo")
     async def echo(text: str) -> str:
@@ -91,7 +91,7 @@ async def test_middleware_can_modify_arguments():
             )
             return await call_next(modified)
 
-    server = FasterMCP(name="upper-server", version="0.1", middleware=[UppercaseMiddleware()])
+    server = RapidMCP(name="upper-server", version="0.1", middleware=[UppercaseMiddleware()])
 
     @server.tool(description="Echo")
     async def echo(text: str) -> str:
@@ -126,7 +126,7 @@ async def test_middleware_chain_order():
             log.append("B:after")
             return result
 
-    server = FasterMCP(name="chain-server", version="0.1", middleware=[MwA(), MwB()])
+    server = RapidMCP(name="chain-server", version="0.1", middleware=[MwA(), MwB()])
 
     @server.tool(description="Noop")
     async def noop() -> str:
@@ -151,7 +151,7 @@ async def test_add_middleware_at_runtime():
             called.append(tool_ctx.tool_name)
             return await call_next(tool_ctx)
 
-    server = FasterMCP(name="runtime-mw-server", version="0.1")
+    server = RapidMCP(name="runtime-mw-server", version="0.1")
     server.add_middleware(TraceMiddleware())
 
     @server.tool(description="Echo")
@@ -168,7 +168,7 @@ async def test_add_middleware_at_runtime():
 @pytest.mark.asyncio
 async def test_no_middleware_unchanged():
     """Server with no middleware behaves identically to before (regression guard)."""
-    server = FasterMCP(name="bare-server", version="0.1")
+    server = RapidMCP(name="bare-server", version="0.1")
 
     @server.tool(description="Echo")
     async def echo(text: str) -> str:
@@ -189,16 +189,16 @@ async def test_timing_middleware_logs(caplog):
     """TimingMiddleware logs tool name and elapsed time in milliseconds."""
     import logging as _logging
 
-    from fastermcp.middleware import TimingMiddleware
+    from rapidmcp.middleware import TimingMiddleware
 
-    server = FasterMCP(name="timing-server", version="0.1", middleware=[TimingMiddleware()])
+    server = RapidMCP(name="timing-server", version="0.1", middleware=[TimingMiddleware()])
 
     @server.tool(description="Fast tool")
     async def instant() -> str:
         return "done"
 
     async with server:
-        with caplog.at_level(_logging.INFO, logger="fastermcp.timing"):
+        with caplog.at_level(_logging.INFO, logger="rapidmcp.timing"):
             async with Client(f"localhost:{server.port}") as client:
                 await client.call_tool("instant", {})
 
@@ -211,10 +211,10 @@ async def test_timing_middleware_custom_logger(caplog):
     """TimingMiddleware accepts a custom logger."""
     import logging as _logging
 
-    from fastermcp.middleware import TimingMiddleware
+    from rapidmcp.middleware import TimingMiddleware
 
     custom = _logging.getLogger("my.timer")
-    server = FasterMCP(
+    server = RapidMCP(
         name="custom-timing-server",
         version="0.1",
         middleware=[TimingMiddleware(logger=custom)],
@@ -244,7 +244,7 @@ async def test_tool_call_context_carries_input_schema():
             received.append(tool_ctx.input_schema)
             return await call_next(tool_ctx)
 
-    server = FasterMCP(name="schema-server", version="0.1", middleware=[SchemaCapture()])
+    server = RapidMCP(name="schema-server", version="0.1", middleware=[SchemaCapture()])
 
     @server.tool(description="Add two numbers")
     async def add(a: int, b: int) -> str:
@@ -270,9 +270,9 @@ async def test_timeout_middleware_fires_on_slow_tool():
     """TimeoutMiddleware returns is_error=True when the tool exceeds the deadline."""
     import asyncio as _asyncio
 
-    from fastermcp.middleware import TimeoutMiddleware
+    from rapidmcp.middleware import TimeoutMiddleware
 
-    server = FasterMCP(
+    server = RapidMCP(
         name="timeout-server",
         version="0.1",
         middleware=[TimeoutMiddleware(default_timeout=0.05)],
@@ -295,9 +295,9 @@ async def test_timeout_middleware_fires_on_slow_tool():
 @pytest.mark.asyncio
 async def test_timeout_middleware_passes_fast_tool():
     """TimeoutMiddleware lets fast tools through unchanged."""
-    from fastermcp.middleware import TimeoutMiddleware
+    from rapidmcp.middleware import TimeoutMiddleware
 
-    server = FasterMCP(
+    server = RapidMCP(
         name="timeout-pass-server",
         version="0.1",
         middleware=[TimeoutMiddleware(default_timeout=5.0)],
@@ -320,9 +320,9 @@ async def test_timeout_middleware_per_tool_override():
     """per_tool dict overrides the default timeout for named tools."""
     import asyncio as _asyncio
 
-    from fastermcp.middleware import TimeoutMiddleware
+    from rapidmcp.middleware import TimeoutMiddleware
 
-    server = FasterMCP(
+    server = RapidMCP(
         name="timeout-per-tool-server",
         version="0.1",
         middleware=[TimeoutMiddleware(default_timeout=0.05, per_tool={"privileged": 10.0})],
@@ -355,9 +355,9 @@ async def test_timeout_middleware_per_tool_override():
 @pytest.mark.asyncio
 async def test_validation_middleware_missing_required():
     """ValidationMiddleware returns is_error=True when a required arg is absent."""
-    from fastermcp.middleware import ValidationMiddleware
+    from rapidmcp.middleware import ValidationMiddleware
 
-    server = FasterMCP(
+    server = RapidMCP(
         name="val-missing-server",
         version="0.1",
         middleware=[ValidationMiddleware()],
@@ -379,9 +379,9 @@ async def test_validation_middleware_missing_required():
 @pytest.mark.asyncio
 async def test_validation_middleware_unknown_arg():
     """ValidationMiddleware returns is_error=True when an unknown arg is passed."""
-    from fastermcp.middleware import ValidationMiddleware
+    from rapidmcp.middleware import ValidationMiddleware
 
-    server = FasterMCP(
+    server = RapidMCP(
         name="val-unknown-server",
         version="0.1",
         middleware=[ValidationMiddleware()],
@@ -403,9 +403,9 @@ async def test_validation_middleware_unknown_arg():
 @pytest.mark.asyncio
 async def test_validation_middleware_valid_passes():
     """ValidationMiddleware forwards valid calls to the handler unchanged."""
-    from fastermcp.middleware import ValidationMiddleware
+    from rapidmcp.middleware import ValidationMiddleware
 
-    server = FasterMCP(
+    server = RapidMCP(
         name="val-pass-server",
         version="0.1",
         middleware=[ValidationMiddleware()],
@@ -426,7 +426,7 @@ async def test_validation_middleware_valid_passes():
 @pytest.mark.asyncio
 async def test_validation_middleware_no_schema_passes_through():
     """ValidationMiddleware skips validation when input_schema is None."""
-    from fastermcp.middleware import ValidationMiddleware
+    from rapidmcp.middleware import ValidationMiddleware
 
     # Manually inject None schema via a wrapping middleware
     class NullifySchema(Middleware):
@@ -437,7 +437,7 @@ async def test_validation_middleware_no_schema_passes_through():
 
             return await call_next(dc_replace(tool_ctx, input_schema=None))
 
-    server = FasterMCP(
+    server = RapidMCP(
         name="val-noschema-server",
         version="0.1",
         middleware=[NullifySchema(), ValidationMiddleware()],
@@ -463,16 +463,16 @@ async def test_logging_middleware_logs_tool(caplog):
     """LoggingMiddleware logs tool name and args before, and is_error status after."""
     import logging as _logging
 
-    from fastermcp.middleware import LoggingMiddleware
+    from rapidmcp.middleware import LoggingMiddleware
 
-    server = FasterMCP(name="logmw-server", version="0.1", middleware=[LoggingMiddleware()])
+    server = RapidMCP(name="logmw-server", version="0.1", middleware=[LoggingMiddleware()])
 
     @server.tool(description="A tool")
     async def mytool(x: str) -> str:
         return x
 
     async with server:
-        with caplog.at_level(_logging.INFO, logger="fastermcp.requests"):
+        with caplog.at_level(_logging.INFO, logger="rapidmcp.requests"):
             async with Client(f"localhost:{server.port}") as client:
                 await client.call_tool("mytool", {"x": "hello"})
 
@@ -489,8 +489,8 @@ async def test_logging_middleware_logs_tool(caplog):
 @pytest.mark.asyncio
 async def test_middleware_chain_cached_across_calls():
     """Middleware chain is built once and reused on subsequent calls."""
-    from fastermcp.middleware import Middleware
-    from fastermcp.tools.tool_manager import ToolManager
+    from rapidmcp.middleware import Middleware
+    from rapidmcp.tools.tool_manager import ToolManager
 
     class CountingMiddleware(Middleware):
         async def on_tool_call(self, tool_ctx, call_next):
@@ -516,8 +516,8 @@ async def test_middleware_chain_cached_across_calls():
 @pytest.mark.asyncio
 async def test_middleware_chain_invalidated_after_add():
     """Adding a middleware marks the chain dirty so it is rebuilt."""
-    from fastermcp.middleware import Middleware
-    from fastermcp.tools.tool_manager import ToolManager
+    from rapidmcp.middleware import Middleware
+    from rapidmcp.tools.tool_manager import ToolManager
 
     class NoopMiddleware(Middleware):
         async def on_tool_call(self, tool_ctx, call_next):

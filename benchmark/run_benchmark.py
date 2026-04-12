@@ -1,5 +1,5 @@
 """
-Latency benchmark: fastermcp vs FastMCP Streamable HTTP.
+Latency benchmark: rapidmcp vs FastMCP Streamable HTTP.
 
 Sequential calls only — measures single-client round-trip time, not throughput.
 
@@ -20,7 +20,7 @@ from pathlib import Path
 
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
-from fastermcp import Client as McpClient
+from rapidmcp import Client as McpClient
 
 GRPC_PORT = 50052
 HTTP_PORT = 8001
@@ -148,13 +148,13 @@ async def main(n_calls: int) -> None:
             f"Running {n_calls} calls each ({WARMUP} warm-up discarded)..."
         )
 
-        print("\nBenchmarking fastermcp...")
+        print("\nBenchmarking rapidmcp...")
         grpc_latencies = await _bench_grpc(n_calls)
 
         print("Benchmarking FastMCP HTTP...")
         http_latencies = await _bench_fastmcp(n_calls)
 
-        _print_table({"fastermcp": grpc_latencies, "FastMCP HTTP": http_latencies})
+        _print_table({"rapidmcp": grpc_latencies, "FastMCP HTTP": http_latencies})
 
     finally:
         for p in procs:
@@ -164,7 +164,7 @@ async def main(n_calls: int) -> None:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="fastermcp vs FastMCP latency benchmark")
+    parser = argparse.ArgumentParser(description="rapidmcp vs FastMCP latency benchmark")
     parser.add_argument(
         "-n", "--calls", type=int, default=DEFAULT_CALLS,
         help=f"number of measured calls per transport (default: {DEFAULT_CALLS})",

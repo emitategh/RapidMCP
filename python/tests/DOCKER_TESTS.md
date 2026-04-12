@@ -16,13 +16,13 @@ This catches deadlock classes that same-process tests miss:
 
 ```bash
 cd python
-docker build -t fastermcp-test-server .
+docker build -t rapidmcp-test-server .
 ```
 
 ## How it works
 
 `_DockerServer` is a context manager that:
-1. Runs `docker run --rm --detach -p {free_host_port}:50051 fastermcp-test-server tests/servers/script.py 50051`
+1. Runs `docker run --rm --detach -p {free_host_port}:50051 rapidmcp-test-server tests/servers/script.py 50051`
 2. Polls TCP with a **double-probe** (two successful connections ~300ms apart) — the first proves the port is bound, the second ensures grpc.aio has finished its HTTP/2 initialisation
 3. Calls `docker stop` on exit regardless of test outcome
 

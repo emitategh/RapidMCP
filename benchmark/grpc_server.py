@@ -1,7 +1,7 @@
-"""fastermcp echo server for benchmarking. Runs on port 50052."""
-from fastermcp import FasterMCP
+"""rapidmcp echo server for benchmarking. Runs on port 50052."""
+from rapidmcp import RapidMCP
 
-server = FasterMCP(name="grpc-benchmark", version="1.0.0")
+server = RapidMCP(name="grpc-benchmark", version="1.0.0")
 
 
 @server.tool(description="Echo the input back")

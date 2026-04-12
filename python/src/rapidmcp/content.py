@@ -1,4 +1,4 @@
-"""Rich content types for FasterMCP tool responses.
+"""Rich content types for RapidMCP tool responses.
 
 Tool handlers may return any of:
 

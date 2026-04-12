@@ -3,14 +3,14 @@ import json
 
 import pytest
 
-from fastermcp import Client, FasterMCP
-from fastermcp._generated import mcp_pb2
-from fastermcp.context import Context
+from rapidmcp import Client, RapidMCP
+from rapidmcp._generated import mcp_pb2
+from rapidmcp.context import Context
 
 
 @pytest.fixture
 async def echo_server():
-    server = FasterMCP(name="echo-server", version="0.1")
+    server = RapidMCP(name="echo-server", version="0.1")
 
     @server.tool(description="Echo text back")
     async def echo(text: str) -> str:
@@ -85,7 +85,7 @@ async def test_grpc_list_tools_twice(echo_server):
 @pytest.mark.asyncio
 async def test_grpc_error_unknown_tool(echo_server):
     async with Client(f"localhost:{echo_server.port}") as client:
-        from fastermcp.errors import McpError
+        from rapidmcp.errors import McpError
 
         with pytest.raises(McpError, match="not found"):
             await client.call_tool("nope", {})
@@ -93,7 +93,7 @@ async def test_grpc_error_unknown_tool(echo_server):
 
 @pytest.mark.asyncio
 async def test_grpc_client_notification():
-    server = FasterMCP(name="notif-server", version="0.1")
+    server = RapidMCP(name="notif-server", version="0.1")
 
     @server.tool(description="Echo")
     async def echo(text: str) -> str:
@@ -112,7 +112,7 @@ async def test_grpc_client_notification():
 
 @pytest.mark.asyncio
 async def test_grpc_server_notification():
-    server = FasterMCP(name="notif-server", version="0.1")
+    server = RapidMCP(name="notif-server", version="0.1")
 
     @server.tool(description="Echo")
     async def echo(text: str) -> str:
@@ -133,7 +133,7 @@ async def test_grpc_server_notification():
 @pytest.mark.asyncio
 async def test_grpc_sampling_roundtrip():
     """Full round-trip: tool calls ctx.sample(), client handler responds."""
-    server = FasterMCP(name="sampling-server", version="0.1")
+    server = RapidMCP(name="sampling-server", version="0.1")
 
     @server.tool(description="Summarize with LLM")
     async def summarize(text: str, ctx: Context) -> str:
@@ -174,7 +174,7 @@ async def test_grpc_sampling_roundtrip():
 @pytest.mark.asyncio
 async def test_grpc_elicitation_roundtrip():
     """Full round-trip: tool calls ctx.elicit(), client handler responds."""
-    server = FasterMCP(name="elicit-server", version="0.1")
+    server = RapidMCP(name="elicit-server", version="0.1")
 
     @server.tool(description="Confirm deploy")
     async def deploy(service: str, ctx: Context) -> str:
@@ -208,7 +208,7 @@ async def test_grpc_elicitation_roundtrip():
 @pytest.mark.asyncio
 async def test_grpc_sampling_without_capability():
     """Tool calling ctx.sample() without client capability gets an error response."""
-    server = FasterMCP(name="no-cap-server", version="0.1")
+    server = RapidMCP(name="no-cap-server", version="0.1")
 
     @server.tool(description="Try sampling")
     async def try_sample(text: str, ctx: Context) -> str:
@@ -226,7 +226,7 @@ async def test_grpc_sampling_without_capability():
 @pytest.mark.asyncio
 async def test_grpc_ctx_logging_and_progress():
     """Tool calls ctx.info() and ctx.report_progress(); client receives notifications."""
-    server = FasterMCP(name="log-server", version="0.1")
+    server = RapidMCP(name="log-server", version="0.1")
 
     @server.tool()
     async def tracked_tool(text: str, ctx: Context) -> str:
@@ -263,7 +263,7 @@ async def test_grpc_ctx_logging_and_progress():
 @pytest.mark.asyncio
 async def test_grpc_list_resource_templates():
     """Register a resource template, list it, verify all fields are returned."""
-    server = FasterMCP(name="template-server", version="0.1")
+    server = RapidMCP(name="template-server", version="0.1")
 
     @server.resource_template(
         uri_template="res://items/{id}",
@@ -287,7 +287,7 @@ async def test_grpc_list_resource_templates():
 @pytest.mark.asyncio
 async def test_grpc_completions_roundtrip():
     """Register a completion handler; client calls complete(); verify suggestions returned."""
-    server = FasterMCP(name="completion-server", version="0.1")
+    server = RapidMCP(name="completion-server", version="0.1")
 
     @server.completion("my_tool")
     async def suggest_city(argument_name: str, value: str) -> list[str]:
@@ -310,7 +310,7 @@ async def test_grpc_completions_roundtrip():
 @pytest.mark.asyncio
 async def test_grpc_list_tools_all_returned():
     """Registering 5 tools: list_tools returns all 5 at once; next_cursor is None."""
-    server = FasterMCP(name="paginate-server", version="0.1")
+    server = RapidMCP(name="paginate-server", version="0.1")
 
     @server.tool(description="Tool alpha")
     async def alpha() -> str:
@@ -344,7 +344,7 @@ async def test_grpc_list_tools_all_returned():
 @pytest.mark.asyncio
 async def test_grpc_cancel_no_crash():
     """Cancelling a non-existent request_id is silently ignored; subsequent calls succeed."""
-    server = FasterMCP(name="cancel-server", version="0.1")
+    server = RapidMCP(name="cancel-server", version="0.1")
 
     @server.tool(description="Echo")
     async def echo(text: str) -> str:
@@ -363,7 +363,7 @@ async def test_grpc_cancel_no_crash():
 @pytest.mark.asyncio
 async def test_grpc_resource_subscribe():
     """Client subscribes to a resource URI; server fires resource_updated; client receives it."""
-    server = FasterMCP(name="subscribe-server", version="0.1")
+    server = RapidMCP(name="subscribe-server", version="0.1")
 
     @server.resource(uri="res://counter", description="A counter")
     async def counter() -> str:
@@ -394,7 +394,7 @@ async def test_grpc_resource_subscribe():
 @pytest.mark.asyncio
 async def test_grpc_roots_roundtrip():
     """Tool calls ctx.list_roots(); client roots handler returns roots; server receives them."""
-    server = FasterMCP(name="roots-server", version="0.1")
+    server = RapidMCP(name="roots-server", version="0.1")
 
     @server.tool(description="Get roots")
     async def get_roots(ctx: Context) -> str:
@@ -432,7 +432,7 @@ async def test_grpc_roots_roundtrip():
 @pytest.mark.asyncio
 async def test_grpc_read_resource_via_template():
     """read_resource matches a URI against a registered template."""
-    server = FasterMCP(name="tmpl-server", version="0.1")
+    server = RapidMCP(name="tmpl-server", version="0.1")
 
     @server.resource_template("res://items/{item_id}", description="An item")
     async def get_item(item_id: str) -> str:
@@ -447,7 +447,7 @@ async def test_grpc_read_resource_via_template():
 @pytest.mark.asyncio
 async def test_grpc_read_resource_exact_match_preferred():
     """A static resource beats a matching template for the same URI."""
-    server = FasterMCP(name="tmpl-server", version="0.1")
+    server = RapidMCP(name="tmpl-server", version="0.1")
 
     @server.resource(uri="res://items/special", description="Static special item")
     async def special_item() -> str:
@@ -466,7 +466,7 @@ async def test_grpc_read_resource_exact_match_preferred():
 @pytest.mark.asyncio
 async def test_grpc_read_resource_template_multi_segment():
     """Wildcard {path*} matches multiple path segments."""
-    server = FasterMCP(name="tmpl-server", version="0.1")
+    server = RapidMCP(name="tmpl-server", version="0.1")
 
     @server.resource_template("res://files/{path*}", description="A file")
     async def get_file(path: str) -> str:
@@ -481,13 +481,13 @@ async def test_grpc_read_resource_template_multi_segment():
 @pytest.mark.asyncio
 async def test_grpc_read_resource_template_not_found():
     """A URI that matches no template returns a 404 error."""
-    server = FasterMCP(name="tmpl-server", version="0.1")
+    server = RapidMCP(name="tmpl-server", version="0.1")
 
     @server.resource_template("res://items/{item_id}", description="An item")
     async def get_item(item_id: str) -> str:
         return f"item:{item_id}"
 
-    from fastermcp.errors import McpError
+    from rapidmcp.errors import McpError
 
     async with server:
         async with Client(f"localhost:{server.port}") as client:
@@ -504,7 +504,7 @@ async def test_grpc_read_resource_template_not_found():
 @pytest.mark.asyncio
 async def test_sampling_no_handler_returns_error():
     """ctx.sample() gets McpError (not timeout) when client has no sampling handler."""
-    server = FasterMCP(name="sampling-server", version="0.1")
+    server = RapidMCP(name="sampling-server", version="0.1")
 
     @server.tool(description="Sample")
     async def do_sample(ctx: Context) -> str:
@@ -528,7 +528,7 @@ async def test_sampling_no_handler_returns_error():
 @pytest.mark.asyncio
 async def test_elicitation_no_handler_returns_error():
     """ctx.elicit() gets McpError (not timeout) when client has no elicitation handler."""
-    server = FasterMCP(name="elicit-server", version="0.1")
+    server = RapidMCP(name="elicit-server", version="0.1")
 
     @server.tool(description="Elicit")
     async def do_elicit(ctx: Context) -> str:

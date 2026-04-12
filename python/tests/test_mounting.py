@@ -1,17 +1,17 @@
-"""Tests for FasterMCP.mount() — server composition."""
+"""Tests for RapidMCP.mount() — server composition."""
 
 import pytest
 
-from fastermcp import Client, FasterMCP
-from fastermcp.server import _prefix_resource_uri
+from rapidmcp import Client, RapidMCP
+from rapidmcp.server import _prefix_resource_uri
 
 # ---------------------------------------------------------------------------
 # Helper factories
 # ---------------------------------------------------------------------------
 
 
-def make_users_sub() -> FasterMCP:
-    sub = FasterMCP("Users", "1.0")
+def make_users_sub() -> RapidMCP:
+    sub = RapidMCP("Users", "1.0")
 
     @sub.tool(description="Get a user by ID")
     async def get_user(id: int) -> str:
@@ -63,7 +63,7 @@ def test_prefix_resource_uri_nested_path():
 
 
 def test_mount_tools_are_prefixed():
-    main = FasterMCP("Main", "1.0")
+    main = RapidMCP("Main", "1.0")
     sub = make_users_sub()
     main.mount(sub, prefix="users")
 
@@ -73,7 +73,7 @@ def test_mount_tools_are_prefixed():
 
 
 def test_mount_resources_uri_prefixed():
-    main = FasterMCP("Main", "1.0")
+    main = RapidMCP("Main", "1.0")
     sub = make_users_sub()
     main.mount(sub, prefix="users")
 
@@ -83,7 +83,7 @@ def test_mount_resources_uri_prefixed():
 
 
 def test_mount_resource_templates_uri_prefixed():
-    main = FasterMCP("Main", "1.0")
+    main = RapidMCP("Main", "1.0")
     sub = make_users_sub()
     main.mount(sub, prefix="users")
 
@@ -94,7 +94,7 @@ def test_mount_resource_templates_uri_prefixed():
 
 
 def test_mount_prompts_are_prefixed():
-    main = FasterMCP("Main", "1.0")
+    main = RapidMCP("Main", "1.0")
     sub = make_users_sub()
     main.mount(sub, prefix="users")
 
@@ -104,7 +104,7 @@ def test_mount_prompts_are_prefixed():
 
 
 def test_mount_completions_ref_name_prefixed():
-    main = FasterMCP("Main", "1.0")
+    main = RapidMCP("Main", "1.0")
     sub = make_users_sub()
     main.mount(sub, prefix="users")
 
@@ -114,7 +114,7 @@ def test_mount_completions_ref_name_prefixed():
 
 
 def test_mount_does_not_modify_sub_server():
-    main = FasterMCP("Main", "1.0")
+    main = RapidMCP("Main", "1.0")
     sub = make_users_sub()
     main.mount(sub, prefix="users")
 
@@ -127,7 +127,7 @@ def test_mount_does_not_modify_sub_server():
 
 
 def test_mount_main_own_tools_unaffected():
-    main = FasterMCP("Main", "1.0")
+    main = RapidMCP("Main", "1.0")
 
     @main.tool(description="Ping")
     async def ping() -> str:
@@ -142,15 +142,15 @@ def test_mount_main_own_tools_unaffected():
 
 
 def test_mount_multiple_prefixes_no_collision():
-    main = FasterMCP("Main", "1.0")
+    main = RapidMCP("Main", "1.0")
 
-    sub1 = FasterMCP("Sub1", "1.0")
+    sub1 = RapidMCP("Sub1", "1.0")
 
     @sub1.tool(description="List items")
     async def list_items() -> str:
         return "sub1 items"
 
-    sub2 = FasterMCP("Sub2", "1.0")
+    sub2 = RapidMCP("Sub2", "1.0")
 
     @sub2.tool(description="List items")
     async def list_items() -> str:  # noqa: F811
@@ -170,7 +170,7 @@ def test_mount_multiple_prefixes_no_collision():
 
 
 def test_mount_tool_collision_raises():
-    main = FasterMCP("Main", "1.0")
+    main = RapidMCP("Main", "1.0")
 
     @main.tool(description="Already registered")
     async def users_get_user() -> str:
@@ -183,7 +183,7 @@ def test_mount_tool_collision_raises():
 
 
 def test_mount_resource_collision_raises():
-    main = FasterMCP("Main", "1.0")
+    main = RapidMCP("Main", "1.0")
 
     @main.resource(uri="res://users/profile")
     async def existing() -> str:
@@ -196,7 +196,7 @@ def test_mount_resource_collision_raises():
 
 
 def test_mount_prompt_collision_raises():
-    main = FasterMCP("Main", "1.0")
+    main = RapidMCP("Main", "1.0")
 
     @main.prompt(description="Already here")
     async def users_greet(name: str) -> str:
@@ -209,7 +209,7 @@ def test_mount_prompt_collision_raises():
 
 
 def test_mount_completion_collision_raises():
-    main = FasterMCP("Main", "1.0")
+    main = RapidMCP("Main", "1.0")
 
     @main.completion("users_get_user")
     async def complete(arg_name: str, value: str) -> list[str]:
@@ -223,9 +223,9 @@ def test_mount_completion_collision_raises():
 
 def test_mount_collision_is_atomic():
     """If any key collides, NO entries from sub should be written."""
-    main = FasterMCP("Main", "1.0")
+    main = RapidMCP("Main", "1.0")
 
-    sub = FasterMCP("Sub", "1.0")
+    sub = RapidMCP("Sub", "1.0")
 
     @sub.tool(description="Alpha")
     async def alpha() -> str:
@@ -255,13 +255,13 @@ def test_mount_collision_is_atomic():
 
 @pytest.fixture
 async def composed_server():
-    main = FasterMCP("Main", "1.0")
+    main = RapidMCP("Main", "1.0")
 
     @main.tool(description="Main ping")
     async def ping() -> str:
         return "pong"
 
-    sub = FasterMCP("Users", "1.0")
+    sub = RapidMCP("Users", "1.0")
 
     @sub.tool(description="Get profile")
     async def get_profile() -> str:
