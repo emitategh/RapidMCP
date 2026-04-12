@@ -149,10 +149,7 @@ async def test_concurrent_sampling_multiple_clients():
         await client.connect()
         try:
             results = await asyncio.gather(
-                *[
-                    client.call_tool("do_sample", {"label": f"c{client_id}-t{j}"})
-                    for j in range(3)
-                ]
+                *[client.call_tool("do_sample", {"label": f"c{client_id}-t{j}"}) for j in range(3)]
             )
             return [r.content[0].text for r in results]
         finally:
@@ -186,14 +183,11 @@ async def test_broadcast_during_concurrent_tool_calls():
         async with server:
             async with Client(f"localhost:{server.port}") as client:
                 received: list[int] = []
-                client.on_notification(
-                    "tools_list_changed", lambda _: received.append(1)
-                )
+                client.on_notification("tools_list_changed", lambda _: received.append(1))
 
                 # Fire off 20 concurrent slow tool calls
                 tool_tasks = [
-                    asyncio.create_task(client.call_tool("slow", {"x": str(i)}))
-                    for i in range(20)
+                    asyncio.create_task(client.call_tool("slow", {"x": str(i)})) for i in range(20)
                 ]
 
                 # Broadcast twice while the tools are running
@@ -230,9 +224,7 @@ async def test_fast_tools_not_blocked_by_slow():
     async with asyncio.timeout(10):
         async with server:
             async with Client(f"localhost:{server.port}") as client:
-                slow_task = asyncio.create_task(
-                    client.call_tool("slow", {"x": "slow"})
-                )
+                slow_task = asyncio.create_task(client.call_tool("slow", {"x": "slow"}))
                 await asyncio.sleep(0.05)  # let slow start
 
                 t0 = time.perf_counter()
@@ -270,8 +262,7 @@ async def test_cancellation_under_load():
             async with Client(f"localhost:{server.port}") as client:
                 # Start 10 slow tasks
                 slow_tasks = [
-                    asyncio.create_task(client.call_tool("slow", {"x": str(i)}))
-                    for i in range(10)
+                    asyncio.create_task(client.call_tool("slow", {"x": str(i)})) for i in range(10)
                 ]
 
                 await asyncio.sleep(0.05)
@@ -284,9 +275,7 @@ async def test_cancellation_under_load():
                 fast_result = await client.call_tool("fast", {"x": "ok"})
 
                 # Remaining slow tasks should complete
-                remaining = await asyncio.gather(
-                    *slow_tasks[5:], return_exceptions=True
-                )
+                remaining = await asyncio.gather(*slow_tasks[5:], return_exceptions=True)
 
     assert fast_result.content[0].text == "ok"
     # Cancelled tasks raised CancelledError; remaining succeeded
@@ -345,10 +334,7 @@ async def test_mixed_concurrent_and_sequential():
     async def burst_client(client_id: int) -> list[str]:
         async with Client(f"localhost:{server.port}") as client:
             results = await asyncio.gather(
-                *[
-                    client.call_tool("echo", {"text": f"{client_id}-{j}"})
-                    for j in range(10)
-                ]
+                *[client.call_tool("echo", {"text": f"{client_id}-{j}"}) for j in range(10)]
             )
             return [r.content[0].text for r in results]
 

@@ -69,15 +69,18 @@ class _DockerServer:
         self._startup_timeout = startup_timeout
         self._container_id: str | None = None
 
-    def __enter__(self) -> "_DockerServer":
+    def __enter__(self) -> _DockerServer:
         result = subprocess.run(
             [
-                "docker", "run",
-                "--rm",             # auto-remove on stop
-                "--detach",         # return container ID immediately
-                "-p", f"{self.port}:{CONTAINER_PORT}",
+                "docker",
+                "run",
+                "--rm",  # auto-remove on stop
+                "--detach",  # return container ID immediately
+                "-p",
+                f"{self.port}:{CONTAINER_PORT}",
                 IMAGE,
-                f"tests/servers/{self._script}", str(CONTAINER_PORT),
+                f"tests/servers/{self._script}",
+                str(CONTAINER_PORT),
             ],
             capture_output=True,
             text=True,
@@ -92,7 +95,7 @@ class _DockerServer:
             subprocess.run(
                 ["docker", "stop", self._container_id],
                 capture_output=True,
-                check=False,        # don't raise if already stopped
+                check=False,  # don't raise if already stopped
             )
             self._container_id = None
 
@@ -147,6 +150,7 @@ async def test_docker_concurrent_tool_calls():
 async def test_docker_concurrent_clients():
     """20 clients connecting to a Docker server simultaneously."""
     with _DockerServer("echo.py") as srv:
+
         async def one_client(i: int) -> str:
             async with Client(f"localhost:{srv.port}") as client:
                 r = await client.call_tool("echo", {"text": str(i)})
@@ -169,6 +173,7 @@ async def test_docker_concurrent_sampling_no_deadlock():
     back — all while 9 other tool tasks are simultaneously waiting for their
     own sampling futures.  A deadlock here would surface as a TimeoutError.
     """
+
     async def sampling_handler(req: mcp_pb2.SamplingRequest) -> mcp_pb2.SamplingResponse:
         await asyncio.sleep(0.01)
         text = req.messages[0].content[0].text
@@ -184,10 +189,7 @@ async def test_docker_concurrent_sampling_no_deadlock():
             await client.connect()
             try:
                 results = await asyncio.gather(
-                    *[
-                        client.call_tool("do_sample", {"n": str(i)})
-                        for i in range(10)
-                    ]
+                    *[client.call_tool("do_sample", {"n": str(i)}) for i in range(10)]
                 )
             finally:
                 await client.close()
@@ -204,9 +206,7 @@ async def test_docker_fast_not_blocked_by_slow():
     with _DockerServer("mixed.py") as srv:
         async with asyncio.timeout(10):
             async with Client(f"localhost:{srv.port}") as client:
-                slow_task = asyncio.create_task(
-                    client.call_tool("slow", {"x": "slow"})
-                )
+                slow_task = asyncio.create_task(client.call_tool("slow", {"x": "slow"}))
                 await asyncio.sleep(0.05)
 
                 t0 = time.monotonic()

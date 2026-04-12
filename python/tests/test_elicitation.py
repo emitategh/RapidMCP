@@ -11,9 +11,9 @@ from rapidmcp import (
     Context,
     ElicitationResult,
     EnumField,
-    RapidMCP,
     FloatField,
     IntField,
+    RapidMCP,
     StringField,
     build_elicitation_schema,
 )

@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from rapidmcp import Audio, Client, RapidMCP, Image, ToolAnnotations
+from rapidmcp import Audio, Client, Image, RapidMCP, ToolAnnotations
 
 # ---------------------------------------------------------------------------
 # Unit tests — content type helpers (no gRPC)
