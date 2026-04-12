@@ -6,8 +6,8 @@ the tool-defining module has PEP 563 deferred annotations enabled.
 
 from __future__ import annotations
 
-from mcp_grpc.context import Context
-from mcp_grpc.server import FasterMCP
+from fastermcp.context import Context
+from fastermcp.server import FasterMCP
 
 
 def register_tool_with_future_annotations(app: FasterMCP) -> None:

@@ -3,8 +3,8 @@
 import asyncio
 import sys
 
-from mcp_grpc import FasterMCP
-from mcp_grpc.context import Context
+from fastermcp import FasterMCP
+from fastermcp.context import Context
 
 port = int(sys.argv[1]) if len(sys.argv) > 1 else 50051
 

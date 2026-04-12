@@ -1,11 +1,11 @@
-"""mcp-grpc: gRPC-native tool-calling protocol inspired by MCP."""
+"""fastermcp: gRPC-native MCP (Model Context Protocol) library."""
 
 __version__ = "0.1.0"
 
-from mcp_grpc.client import Client
-from mcp_grpc.content import Audio, Image
-from mcp_grpc.context import Context
-from mcp_grpc.elicitation import (
+from fastermcp.client import Client
+from fastermcp.content import Audio, Image
+from fastermcp.context import Context
+from fastermcp.elicitation import (
     BoolField,
     ElicitationField,
     ElicitationResult,
@@ -15,8 +15,8 @@ from mcp_grpc.elicitation import (
     StringField,
     build_elicitation_schema,
 )
-from mcp_grpc.errors import McpError, ToolError
-from mcp_grpc.middleware import (
+from fastermcp.errors import McpError, ToolError
+from fastermcp.middleware import (
     LoggingMiddleware,
     Middleware,
     TimeoutMiddleware,
@@ -24,9 +24,9 @@ from mcp_grpc.middleware import (
     ToolCallContext,
     ValidationMiddleware,
 )
-from mcp_grpc.server import FasterMCP
-from mcp_grpc.tools import ToolAnnotations
-from mcp_grpc.types import (
+from fastermcp.server import FasterMCP
+from fastermcp.tools import ToolAnnotations
+from fastermcp.types import (
     CallToolResult,
     CompleteResult,
     ContentItem,

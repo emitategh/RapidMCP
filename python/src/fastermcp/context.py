@@ -5,10 +5,10 @@ from __future__ import annotations
 import asyncio
 import json
 
-from mcp_grpc._generated import mcp_pb2
-from mcp_grpc.elicitation import ElicitationResult, build_elicitation_schema
-from mcp_grpc.errors import McpError
-from mcp_grpc.session import PendingRequests
+from fastermcp._generated import mcp_pb2
+from fastermcp.elicitation import ElicitationResult, build_elicitation_schema
+from fastermcp.errors import McpError
+from fastermcp.session import PendingRequests
 
 _DEFAULT_TIMEOUT: float = 30.0
 

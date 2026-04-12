@@ -1,5 +1,5 @@
-"""mcp-grpc echo server for benchmarking. Runs on port 50052."""
-from mcp_grpc import FasterMCP
+"""fastermcp echo server for benchmarking. Runs on port 50052."""
+from fastermcp import FasterMCP
 
 server = FasterMCP(name="grpc-benchmark", version="1.0.0")
 

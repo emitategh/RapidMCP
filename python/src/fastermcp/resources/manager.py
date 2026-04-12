@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from mcp_grpc.resources.resource import RegisteredResource, RegisteredResourceTemplate
+from fastermcp.resources.resource import RegisteredResource, RegisteredResourceTemplate
 
 
 class ResourceManager:

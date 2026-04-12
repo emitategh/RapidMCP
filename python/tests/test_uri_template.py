@@ -1,6 +1,6 @@
-"""Unit tests for mcp_grpc.resources.uri_template."""
+"""Unit tests for fastermcp.resources.uri_template."""
 
-from mcp_grpc.resources.uri_template import match_uri_template
+from fastermcp.resources.uri_template import match_uri_template
 
 
 def test_simple_variable_match():

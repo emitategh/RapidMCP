@@ -30,16 +30,16 @@ uv run ty check              # type check (non-blocking)
 ## Public API (current)
 
 ```python
-from mcp_grpc import FasterMCP, Client, Context
-from mcp_grpc import Middleware, ToolCallContext, TimingMiddleware, LoggingMiddleware
-from mcp_grpc import TimeoutMiddleware, ValidationMiddleware, ToolAnnotations
-from mcp_grpc import Audio, Image
-from mcp_grpc import (
+from fastermcp import FasterMCP, Client, Context
+from fastermcp import Middleware, ToolCallContext, TimingMiddleware, LoggingMiddleware
+from fastermcp import TimeoutMiddleware, ValidationMiddleware, ToolAnnotations
+from fastermcp import Audio, Image
+from fastermcp import (
     BoolField, ElicitationField, ElicitationResult,
     EnumField, FloatField, IntField, StringField, build_elicitation_schema,
 )
-from mcp_grpc.errors import McpError, ToolError
-from mcp_grpc.integrations.livekit import MCPServerGRPC  # livekit-agents MCPServer adapter
+from fastermcp.errors import McpError, ToolError
+from fastermcp.integrations.livekit import MCPServerGRPC  # livekit-agents MCPServer adapter
 ```
 
 ## Project structure
@@ -47,7 +47,7 @@ from mcp_grpc.integrations.livekit import MCPServerGRPC  # livekit-agents MCPSer
 ```
 proto/mcp.proto                    ← single source of truth for all messages
 python/
-  src/mcp_grpc/
+  src/fastermcp/
     server.py                      ← FasterMCP, mount(), decorators
     _servicer.py                   ← _McpServicer (gRPC session handler)
     client.py                      ← Client, ListResult, sampling/elicitation/roots handlers

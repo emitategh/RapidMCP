@@ -9,17 +9,17 @@ import time
 import uuid
 from typing import TYPE_CHECKING
 
-from mcp_grpc._generated import mcp_pb2, mcp_pb2_grpc
-from mcp_grpc._utils import _paginate
-from mcp_grpc.context import Context
-from mcp_grpc.errors import McpError
-from mcp_grpc.resources.uri_template import match_uri_template
-from mcp_grpc.session import PendingRequests
+from fastermcp._generated import mcp_pb2, mcp_pb2_grpc
+from fastermcp._utils import _paginate
+from fastermcp.context import Context
+from fastermcp.errors import McpError
+from fastermcp.resources.uri_template import match_uri_template
+from fastermcp.session import PendingRequests
 
 if TYPE_CHECKING:
-    from mcp_grpc.server import FasterMCP
+    from fastermcp.server import FasterMCP
 
-logger = logging.getLogger("mcp_grpc.server")
+logger = logging.getLogger("fastermcp.server")
 
 
 class _McpServicer(mcp_pb2_grpc.McpServicer):

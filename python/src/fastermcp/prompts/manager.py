@@ -5,7 +5,7 @@ from __future__ import annotations
 import inspect
 from collections.abc import Callable
 
-from mcp_grpc.prompts.prompt import RegisteredCompletion, RegisteredPrompt
+from fastermcp.prompts.prompt import RegisteredCompletion, RegisteredPrompt
 
 
 class PromptManager:

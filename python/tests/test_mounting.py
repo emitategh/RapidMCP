@@ -2,8 +2,8 @@
 
 import pytest
 
-from mcp_grpc import Client, FasterMCP
-from mcp_grpc.server import _prefix_resource_uri
+from fastermcp import Client, FasterMCP
+from fastermcp.server import _prefix_resource_uri
 
 # ---------------------------------------------------------------------------
 # Helper factories

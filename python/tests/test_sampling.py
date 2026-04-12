@@ -2,8 +2,8 @@
 
 import pytest
 
-from mcp_grpc import Client, Context, FasterMCP
-from mcp_grpc._generated import mcp_pb2
+from fastermcp import Client, Context, FasterMCP
+from fastermcp._generated import mcp_pb2
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -1,4 +1,4 @@
-"""Error types for mcp-grpc."""
+"""Error types for fastermcp."""
 
 
 class McpError(Exception):

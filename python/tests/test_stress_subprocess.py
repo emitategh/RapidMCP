@@ -11,8 +11,8 @@ This catches deadlock classes that same-process tests miss:
 
 Requirements:
   - Docker daemon running and `docker` CLI on PATH
-  - Image `mcp-grpc-test-server` built:
-      cd python && docker build -t mcp-grpc-test-server .
+  - Image `fastermcp-test-server` built:
+      cd python && docker build -t fastermcp-test-server .
 
 Each test wraps the client side in asyncio.timeout() so a deadlock surfaces
 as TimeoutError rather than a hung test runner. The container is removed in
@@ -28,10 +28,10 @@ import time
 
 import pytest
 
-from mcp_grpc import Client
-from mcp_grpc._generated import mcp_pb2
+from fastermcp import Client
+from fastermcp._generated import mcp_pb2
 
-IMAGE = "mcp-grpc-test-server"
+IMAGE = "fastermcp-test-server"
 CONTAINER_PORT = 50051
 
 

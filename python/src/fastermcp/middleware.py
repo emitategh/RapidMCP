@@ -9,14 +9,14 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from mcp_grpc._generated import mcp_pb2
+from fastermcp._generated import mcp_pb2
 
 if TYPE_CHECKING:
     # Context is imported only for type-checking to avoid a circular import:
     # server.py imports Middleware; middleware.py needs Context for ToolCallContext.
     # With `from __future__ import annotations`, all annotations are strings at
     # runtime so Python never resolves this import during normal execution.
-    from mcp_grpc.context import Context
+    from fastermcp.context import Context
 
 # Type alias for the next handler in the chain.
 CallNext = Callable[["ToolCallContext"], Awaitable[mcp_pb2.CallToolResponse]]
@@ -60,7 +60,7 @@ class Middleware:
 class TimingMiddleware(Middleware):
     """Logs elapsed wall-clock time for every tool call.
 
-    Default logger: ``mcp_grpc.timing`` at INFO level.
+    Default logger: ``fastermcp.timing`` at INFO level.
     """
 
     def __init__(
@@ -68,7 +68,7 @@ class TimingMiddleware(Middleware):
         logger: logging.Logger | None = None,
         log_level: int = logging.INFO,
     ) -> None:
-        self._logger = logger or logging.getLogger("mcp_grpc.timing")
+        self._logger = logger or logging.getLogger("fastermcp.timing")
         self._log_level = log_level
 
     async def on_tool_call(
@@ -91,7 +91,7 @@ class TimingMiddleware(Middleware):
 class LoggingMiddleware(Middleware):
     """Logs tool name + arguments before, and is_error status after, every call.
 
-    Default logger: ``mcp_grpc.requests`` at INFO level.
+    Default logger: ``fastermcp.requests`` at INFO level.
     """
 
     def __init__(
@@ -99,7 +99,7 @@ class LoggingMiddleware(Middleware):
         logger: logging.Logger | None = None,
         log_level: int = logging.INFO,
     ) -> None:
-        self._logger = logger or logging.getLogger("mcp_grpc.requests")
+        self._logger = logger or logging.getLogger("fastermcp.requests")
         self._log_level = log_level
 
     async def on_tool_call(

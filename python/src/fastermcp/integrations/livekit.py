@@ -7,7 +7,7 @@ It is the gRPC counterpart to ``MCPServerHTTP`` and is used with the standard
 Usage::
 
     from livekit.agents.llm.mcp import MCPToolset, MCPServerHTTP
-    from mcp_grpc.integrations.livekit import MCPServerGRPC
+    from fastermcp.integrations.livekit import MCPServerGRPC
 
     session = AgentSession(
         tools=[
@@ -26,7 +26,7 @@ import contextlib
 import logging
 from typing import Any
 
-from mcp_grpc.client import Client
+from fastermcp.client import Client
 
 logger = logging.getLogger(__name__)
 

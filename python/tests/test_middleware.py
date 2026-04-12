@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from mcp_grpc import Client, FasterMCP
-from mcp_grpc._generated import mcp_pb2
-from mcp_grpc.middleware import CallNext, Middleware, ToolCallContext
+from fastermcp import Client, FasterMCP
+from fastermcp._generated import mcp_pb2
+from fastermcp.middleware import CallNext, Middleware, ToolCallContext
 
 
 def _ok(text: str) -> mcp_pb2.CallToolResponse:
@@ -189,7 +189,7 @@ async def test_timing_middleware_logs(caplog):
     """TimingMiddleware logs tool name and elapsed time in milliseconds."""
     import logging as _logging
 
-    from mcp_grpc.middleware import TimingMiddleware
+    from fastermcp.middleware import TimingMiddleware
 
     server = FasterMCP(name="timing-server", version="0.1", middleware=[TimingMiddleware()])
 
@@ -198,7 +198,7 @@ async def test_timing_middleware_logs(caplog):
         return "done"
 
     async with server:
-        with caplog.at_level(_logging.INFO, logger="mcp_grpc.timing"):
+        with caplog.at_level(_logging.INFO, logger="fastermcp.timing"):
             async with Client(f"localhost:{server.port}") as client:
                 await client.call_tool("instant", {})
 
@@ -211,7 +211,7 @@ async def test_timing_middleware_custom_logger(caplog):
     """TimingMiddleware accepts a custom logger."""
     import logging as _logging
 
-    from mcp_grpc.middleware import TimingMiddleware
+    from fastermcp.middleware import TimingMiddleware
 
     custom = _logging.getLogger("my.timer")
     server = FasterMCP(
@@ -270,7 +270,7 @@ async def test_timeout_middleware_fires_on_slow_tool():
     """TimeoutMiddleware returns is_error=True when the tool exceeds the deadline."""
     import asyncio as _asyncio
 
-    from mcp_grpc.middleware import TimeoutMiddleware
+    from fastermcp.middleware import TimeoutMiddleware
 
     server = FasterMCP(
         name="timeout-server",
@@ -295,7 +295,7 @@ async def test_timeout_middleware_fires_on_slow_tool():
 @pytest.mark.asyncio
 async def test_timeout_middleware_passes_fast_tool():
     """TimeoutMiddleware lets fast tools through unchanged."""
-    from mcp_grpc.middleware import TimeoutMiddleware
+    from fastermcp.middleware import TimeoutMiddleware
 
     server = FasterMCP(
         name="timeout-pass-server",
@@ -320,7 +320,7 @@ async def test_timeout_middleware_per_tool_override():
     """per_tool dict overrides the default timeout for named tools."""
     import asyncio as _asyncio
 
-    from mcp_grpc.middleware import TimeoutMiddleware
+    from fastermcp.middleware import TimeoutMiddleware
 
     server = FasterMCP(
         name="timeout-per-tool-server",
@@ -355,7 +355,7 @@ async def test_timeout_middleware_per_tool_override():
 @pytest.mark.asyncio
 async def test_validation_middleware_missing_required():
     """ValidationMiddleware returns is_error=True when a required arg is absent."""
-    from mcp_grpc.middleware import ValidationMiddleware
+    from fastermcp.middleware import ValidationMiddleware
 
     server = FasterMCP(
         name="val-missing-server",
@@ -379,7 +379,7 @@ async def test_validation_middleware_missing_required():
 @pytest.mark.asyncio
 async def test_validation_middleware_unknown_arg():
     """ValidationMiddleware returns is_error=True when an unknown arg is passed."""
-    from mcp_grpc.middleware import ValidationMiddleware
+    from fastermcp.middleware import ValidationMiddleware
 
     server = FasterMCP(
         name="val-unknown-server",
@@ -403,7 +403,7 @@ async def test_validation_middleware_unknown_arg():
 @pytest.mark.asyncio
 async def test_validation_middleware_valid_passes():
     """ValidationMiddleware forwards valid calls to the handler unchanged."""
-    from mcp_grpc.middleware import ValidationMiddleware
+    from fastermcp.middleware import ValidationMiddleware
 
     server = FasterMCP(
         name="val-pass-server",
@@ -426,7 +426,7 @@ async def test_validation_middleware_valid_passes():
 @pytest.mark.asyncio
 async def test_validation_middleware_no_schema_passes_through():
     """ValidationMiddleware skips validation when input_schema is None."""
-    from mcp_grpc.middleware import ValidationMiddleware
+    from fastermcp.middleware import ValidationMiddleware
 
     # Manually inject None schema via a wrapping middleware
     class NullifySchema(Middleware):
@@ -463,7 +463,7 @@ async def test_logging_middleware_logs_tool(caplog):
     """LoggingMiddleware logs tool name and args before, and is_error status after."""
     import logging as _logging
 
-    from mcp_grpc.middleware import LoggingMiddleware
+    from fastermcp.middleware import LoggingMiddleware
 
     server = FasterMCP(name="logmw-server", version="0.1", middleware=[LoggingMiddleware()])
 
@@ -472,7 +472,7 @@ async def test_logging_middleware_logs_tool(caplog):
         return x
 
     async with server:
-        with caplog.at_level(_logging.INFO, logger="mcp_grpc.requests"):
+        with caplog.at_level(_logging.INFO, logger="fastermcp.requests"):
             async with Client(f"localhost:{server.port}") as client:
                 await client.call_tool("mytool", {"x": "hello"})
 
@@ -489,8 +489,8 @@ async def test_logging_middleware_logs_tool(caplog):
 @pytest.mark.asyncio
 async def test_middleware_chain_cached_across_calls():
     """Middleware chain is built once and reused on subsequent calls."""
-    from mcp_grpc.middleware import Middleware
-    from mcp_grpc.tools.tool_manager import ToolManager
+    from fastermcp.middleware import Middleware
+    from fastermcp.tools.tool_manager import ToolManager
 
     class CountingMiddleware(Middleware):
         async def on_tool_call(self, tool_ctx, call_next):
@@ -516,8 +516,8 @@ async def test_middleware_chain_cached_across_calls():
 @pytest.mark.asyncio
 async def test_middleware_chain_invalidated_after_add():
     """Adding a middleware marks the chain dirty so it is rebuilt."""
-    from mcp_grpc.middleware import Middleware
-    from mcp_grpc.tools.tool_manager import ToolManager
+    from fastermcp.middleware import Middleware
+    from fastermcp.tools.tool_manager import ToolManager
 
     class NoopMiddleware(Middleware):
         async def on_tool_call(self, tool_ctx, call_next):

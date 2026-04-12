@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from mcp_grpc.server import FasterMCP
+from fastermcp.server import FasterMCP
 
 
 def test_register_tool():
@@ -76,7 +76,7 @@ async def test_call_tool_handler():
 async def test_call_unknown_tool():
     server = FasterMCP(name="test", version="0.1")
 
-    from mcp_grpc.errors import McpError
+    from fastermcp.errors import McpError
 
     with pytest.raises(McpError, match="not found"):
         await server.handle_call_tool("nonexistent", "{}")
@@ -84,7 +84,7 @@ async def test_call_unknown_tool():
 
 def test_tool_context_excluded_from_schema():
     """Context parameter should not appear in input_schema."""
-    from mcp_grpc.context import Context
+    from fastermcp.context import Context
 
     server = FasterMCP(name="test", version="0.1")
 
@@ -116,9 +116,9 @@ async def test_tool_context_injection():
     """Tool handler receives a Context when type-hinted."""
     import asyncio
 
-    from mcp_grpc._generated import mcp_pb2
-    from mcp_grpc.context import Context
-    from mcp_grpc.session import PendingRequests
+    from fastermcp._generated import mcp_pb2
+    from fastermcp.context import Context
+    from fastermcp.session import PendingRequests
 
     server = FasterMCP(name="test", version="0.1")
     received_ctx = []
@@ -242,9 +242,9 @@ async def test_ctx_info_puts_log_notification():
     import asyncio
     import json
 
-    from mcp_grpc._generated import mcp_pb2
-    from mcp_grpc.context import Context
-    from mcp_grpc.session import PendingRequests
+    from fastermcp._generated import mcp_pb2
+    from fastermcp.context import Context
+    from fastermcp.session import PendingRequests
 
     queue = asyncio.Queue()
     ctx = Context(
@@ -268,9 +268,9 @@ async def test_ctx_debug_puts_correct_level():
     import asyncio
     import json
 
-    from mcp_grpc._generated import mcp_pb2
-    from mcp_grpc.context import Context
-    from mcp_grpc.session import PendingRequests
+    from fastermcp._generated import mcp_pb2
+    from fastermcp.context import Context
+    from fastermcp.session import PendingRequests
 
     queue = asyncio.Queue()
     ctx = Context(
@@ -288,9 +288,9 @@ async def test_ctx_warning_puts_correct_level():
     import asyncio
     import json
 
-    from mcp_grpc._generated import mcp_pb2
-    from mcp_grpc.context import Context
-    from mcp_grpc.session import PendingRequests
+    from fastermcp._generated import mcp_pb2
+    from fastermcp.context import Context
+    from fastermcp.session import PendingRequests
 
     queue = asyncio.Queue()
     ctx = Context(
@@ -308,9 +308,9 @@ async def test_ctx_error_puts_correct_level():
     import asyncio
     import json
 
-    from mcp_grpc._generated import mcp_pb2
-    from mcp_grpc.context import Context
-    from mcp_grpc.session import PendingRequests
+    from fastermcp._generated import mcp_pb2
+    from fastermcp.context import Context
+    from fastermcp.session import PendingRequests
 
     queue = asyncio.Queue()
     ctx = Context(
@@ -328,9 +328,9 @@ async def test_ctx_info_with_extra():
     import asyncio
     import json
 
-    from mcp_grpc._generated import mcp_pb2
-    from mcp_grpc.context import Context
-    from mcp_grpc.session import PendingRequests
+    from fastermcp._generated import mcp_pb2
+    from fastermcp.context import Context
+    from fastermcp.session import PendingRequests
 
     queue = asyncio.Queue()
     ctx = Context(
@@ -348,9 +348,9 @@ async def test_ctx_debug_with_extra():
     import asyncio
     import json
 
-    from mcp_grpc._generated import mcp_pb2
-    from mcp_grpc.context import Context
-    from mcp_grpc.session import PendingRequests
+    from fastermcp._generated import mcp_pb2
+    from fastermcp.context import Context
+    from fastermcp.session import PendingRequests
 
     queue = asyncio.Queue()
     ctx = Context(
@@ -369,9 +369,9 @@ async def test_ctx_report_progress_with_total():
     import asyncio
     import json
 
-    from mcp_grpc._generated import mcp_pb2
-    from mcp_grpc.context import Context
-    from mcp_grpc.session import PendingRequests
+    from fastermcp._generated import mcp_pb2
+    from fastermcp.context import Context
+    from fastermcp.session import PendingRequests
 
     queue = asyncio.Queue()
     ctx = Context(
@@ -412,9 +412,9 @@ async def test_future_annotations_context_injection():
 
     from _future_annotations_helper import register_tool_with_future_annotations
 
-    from mcp_grpc._generated import mcp_pb2
-    from mcp_grpc.context import Context
-    from mcp_grpc.session import PendingRequests
+    from fastermcp._generated import mcp_pb2
+    from fastermcp.context import Context
+    from fastermcp.session import PendingRequests
 
     server = FasterMCP(name="test", version="0.1")
     register_tool_with_future_annotations(server)
@@ -437,9 +437,9 @@ async def test_ctx_report_progress_without_total():
     import asyncio
     import json
 
-    from mcp_grpc._generated import mcp_pb2
-    from mcp_grpc.context import Context
-    from mcp_grpc.session import PendingRequests
+    from fastermcp._generated import mcp_pb2
+    from fastermcp.context import Context
+    from fastermcp.session import PendingRequests
 
     queue = asyncio.Queue()
     ctx = Context(
@@ -461,8 +461,8 @@ async def test_ctx_report_progress_without_total():
 @pytest.mark.asyncio
 async def test_tool_returning_none_gives_empty_content():
     """A tool that returns None should produce an empty content list (not 'None' string)."""
-    from mcp_grpc import FasterMCP
-    from mcp_grpc.testing import InProcessChannel
+    from fastermcp import FasterMCP
+    from fastermcp.testing import InProcessChannel
 
     server = FasterMCP(name="none-server", version="0.1")
 

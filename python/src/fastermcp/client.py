@@ -11,10 +11,10 @@ from typing import Any, Literal
 import grpc
 from grpc import aio as grpc_aio
 
-from mcp_grpc._generated import mcp_pb2, mcp_pb2_grpc
-from mcp_grpc.errors import McpError
-from mcp_grpc.session import NotificationRegistry, PendingRequests
-from mcp_grpc.types import (
+from fastermcp._generated import mcp_pb2, mcp_pb2_grpc
+from fastermcp.errors import McpError
+from fastermcp.session import NotificationRegistry, PendingRequests
+from fastermcp.types import (
     CallToolResult,
     CompleteResult,
     GetPromptResult,
@@ -31,7 +31,7 @@ from mcp_grpc.types import (
     _convert_tool,
 )
 
-logger = logging.getLogger("mcp_grpc.client")
+logger = logging.getLogger("fastermcp.client")
 
 
 class Client:
@@ -220,7 +220,7 @@ class Client:
     async def _initialize(self) -> None:
         env = mcp_pb2.ClientEnvelope(
             initialize=mcp_pb2.InitializeRequest(
-                client_name="mcp-grpc-python",
+                client_name="fastermcp-python",
                 client_version="0.1.0",
                 capabilities=mcp_pb2.ClientCapabilities(
                     sampling=self._sampling_handler is not None,

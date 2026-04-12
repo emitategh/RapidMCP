@@ -11,16 +11,16 @@ from typing import Any
 
 from grpc import aio as grpc_aio
 
-from mcp_grpc._generated import mcp_pb2, mcp_pb2_grpc
-from mcp_grpc._servicer import _McpServicer
-from mcp_grpc._utils import _prefix_resource_uri
-from mcp_grpc.context import Context
-from mcp_grpc.middleware import Middleware
-from mcp_grpc.prompts import PromptManager, RegisteredCompletion, RegisteredPrompt
-from mcp_grpc.resources import RegisteredResource, RegisteredResourceTemplate, ResourceManager
-from mcp_grpc.tools import RegisteredTool, ToolManager
+from fastermcp._generated import mcp_pb2, mcp_pb2_grpc
+from fastermcp._servicer import _McpServicer
+from fastermcp._utils import _prefix_resource_uri
+from fastermcp.context import Context
+from fastermcp.middleware import Middleware
+from fastermcp.prompts import PromptManager, RegisteredCompletion, RegisteredPrompt
+from fastermcp.resources import RegisteredResource, RegisteredResourceTemplate, ResourceManager
+from fastermcp.tools import RegisteredTool, ToolManager
 
-logger = logging.getLogger("mcp_grpc.server")
+logger = logging.getLogger("fastermcp.server")
 
 
 class FasterMCP:
@@ -267,7 +267,7 @@ class FasterMCP:
         return grpc_server
 
     def _print_banner(self, port: int) -> None:
-        from mcp_grpc import __version__
+        from fastermcp import __version__
 
         title = "█▀▀ ▄▀█ █▀ ▀█▀ █▀▀ █▀█   █▀▄▀█ █▀▀ █▀█"
         sub = "█▀  █▀█ ▄█  █  ██▄ █▀▄   █ ▀ █ █▄▄ █▀▀"

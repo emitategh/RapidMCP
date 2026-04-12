@@ -3,7 +3,7 @@
 import asyncio
 import sys
 
-from mcp_grpc import FasterMCP
+from fastermcp import FasterMCP
 
 port = int(sys.argv[1]) if len(sys.argv) > 1 else 50051
 

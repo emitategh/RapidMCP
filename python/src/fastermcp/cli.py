@@ -125,7 +125,7 @@ def import_server(file: Path, server_object: str | None = None) -> Any:
 
 def cmd_run(args: argparse.Namespace) -> None:
     """Implement ``fastermcp run``."""
-    from mcp_grpc import FasterMCP
+    from fastermcp import FasterMCP
 
     file, server_object = parse_file_path(args.server_spec)
     server = import_server(file, server_object)
@@ -144,7 +144,7 @@ def cmd_run(args: argparse.Namespace) -> None:
 
 def cmd_version(_args: argparse.Namespace) -> None:
     """Implement ``fastermcp version``."""
-    from mcp_grpc import __version__  # type: ignore[attr-defined]
+    from fastermcp import __version__  # type: ignore[attr-defined]
 
     print(f"FasterMCP {__version__}")
     print(f"Python     {platform.python_version()}")

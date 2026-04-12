@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from mcp_grpc import Audio, Client, FasterMCP, Image, ToolAnnotations
+from fastermcp import Audio, Client, FasterMCP, Image, ToolAnnotations
 
 # ---------------------------------------------------------------------------
 # Unit tests — content type helpers (no gRPC)

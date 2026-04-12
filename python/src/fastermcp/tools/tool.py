@@ -1,4 +1,4 @@
-# python/src/mcp_grpc/tools/tool.py
+# python/src/fastermcp/tools/tool.py
 """Tool domain objects and registration helpers."""
 
 from __future__ import annotations
@@ -56,7 +56,7 @@ def _resolve_hints(fn: Callable) -> dict[str, Any]:
 
 def _needs_context(fn: Callable) -> bool:
     """Return True if *fn* declares a ``ctx: Context`` parameter."""
-    from mcp_grpc.context import Context
+    from fastermcp.context import Context
 
     hints = _resolve_hints(fn)
     return any(v is Context for v in hints.values())
@@ -64,7 +64,7 @@ def _needs_context(fn: Callable) -> bool:
 
 def _build_input_schema(fn: Callable) -> str:
     """Build a JSON Schema from function type hints."""
-    from mcp_grpc.context import Context
+    from fastermcp.context import Context
 
     hints = _resolve_hints(fn)
     sig = inspect.signature(fn)

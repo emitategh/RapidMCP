@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from mcp_grpc.session import PendingRequests
+from fastermcp.session import PendingRequests
 
 
 @pytest.mark.asyncio

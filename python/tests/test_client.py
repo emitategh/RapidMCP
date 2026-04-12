@@ -1,8 +1,8 @@
 import pytest
 
-from mcp_grpc.client import ListResult
-from mcp_grpc.server import FasterMCP
-from mcp_grpc.testing import InProcessChannel
+from fastermcp.client import ListResult
+from fastermcp.server import FasterMCP
+from fastermcp.testing import InProcessChannel
 
 
 @pytest.fixture
@@ -49,7 +49,7 @@ async def test_call_tool(echo_server):
 @pytest.mark.asyncio
 async def test_call_unknown_tool(echo_server):
     async with InProcessChannel(echo_server) as client:
-        from mcp_grpc.errors import McpError
+        from fastermcp.errors import McpError
 
         with pytest.raises(McpError, match="not found"):
             await client.call_tool("nonexistent", {})
@@ -166,7 +166,7 @@ async def test_complete():
 @pytest.mark.asyncio
 async def test_close_before_connect_no_error():
     """Calling close() on a freshly-constructed client should not raise."""
-    from mcp_grpc import Client
+    from fastermcp import Client
 
     client = Client("localhost:1")
     await client.close()  # should be a no-op, no exception
@@ -180,7 +180,7 @@ async def test_close_before_connect_no_error():
 @pytest.mark.asyncio
 async def test_aenter_connect_failure_resets_ref_count():
     """If connect() fails, _ref_count must be reset to 0 so the client is reusable."""
-    from mcp_grpc import Client
+    from fastermcp import Client
 
     client = Client("localhost:1")  # no server running here
     try:

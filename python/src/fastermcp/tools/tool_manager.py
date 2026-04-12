@@ -1,4 +1,4 @@
-# python/src/mcp_grpc/tools/tool_manager.py
+# python/src/fastermcp/tools/tool_manager.py
 """ToolManager — registry and dispatcher for tools."""
 
 from __future__ import annotations
@@ -10,11 +10,11 @@ from collections.abc import Callable
 from functools import partial
 from typing import Any
 
-from mcp_grpc._generated import mcp_pb2
-from mcp_grpc._utils import _to_content_items
-from mcp_grpc.errors import McpError
-from mcp_grpc.middleware import Middleware, ToolCallContext
-from mcp_grpc.tools.tool import (
+from fastermcp._generated import mcp_pb2
+from fastermcp._utils import _to_content_items
+from fastermcp.errors import McpError
+from fastermcp.middleware import Middleware, ToolCallContext
+from fastermcp.tools.tool import (
     RegisteredTool,
     ToolAnnotations,
     _build_input_schema,
@@ -132,7 +132,7 @@ class ToolManager:
         ctx: Any = None,
     ) -> mcp_pb2.CallToolResponse:
         """Invoke a tool with a pre-parsed arguments dict (base of middleware chain)."""
-        from mcp_grpc.context import Context
+        from fastermcp.context import Context
 
         tool = self._tools.get(name)
         if not tool:

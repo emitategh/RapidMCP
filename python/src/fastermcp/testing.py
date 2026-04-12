@@ -5,11 +5,11 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from mcp_grpc._generated import mcp_pb2
-from mcp_grpc.errors import McpError
-from mcp_grpc.server import FasterMCP, _McpServicer
-from mcp_grpc.session import PendingRequests
-from mcp_grpc.types import (
+from fastermcp._generated import mcp_pb2
+from fastermcp.errors import McpError
+from fastermcp.server import FasterMCP, _McpServicer
+from fastermcp.session import PendingRequests
+from fastermcp.types import (
     CallToolResult,
     CompleteResult,
     GetPromptResult,

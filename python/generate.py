@@ -6,7 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).parent.parent
 PROTO_DIR = ROOT / "proto"
 PROTO_FILE = PROTO_DIR / "mcp.proto"
-OUT_DIR = Path(__file__).parent / "src" / "mcp_grpc" / "_generated"
+OUT_DIR = Path(__file__).parent / "src" / "fastermcp" / "_generated"
 
 
 def main() -> None:
@@ -28,7 +28,7 @@ def main() -> None:
     # lives inside a package. Rewrite to a relative import.
     grpc_file = OUT_DIR / "mcp_pb2_grpc.py"
     text = grpc_file.read_text()
-    text = text.replace("import mcp_pb2 as mcp__pb2", "from mcp_grpc._generated import mcp_pb2 as mcp__pb2")
+    text = text.replace("import mcp_pb2 as mcp__pb2", "from fastermcp._generated import mcp_pb2 as mcp__pb2")
     grpc_file.write_text(text)
     print("Fixed import in mcp_pb2_grpc.py")
 

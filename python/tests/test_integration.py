@@ -3,9 +3,9 @@ import json
 
 import pytest
 
-from mcp_grpc import Client, FasterMCP
-from mcp_grpc._generated import mcp_pb2
-from mcp_grpc.context import Context
+from fastermcp import Client, FasterMCP
+from fastermcp._generated import mcp_pb2
+from fastermcp.context import Context
 
 
 @pytest.fixture
@@ -85,7 +85,7 @@ async def test_grpc_list_tools_twice(echo_server):
 @pytest.mark.asyncio
 async def test_grpc_error_unknown_tool(echo_server):
     async with Client(f"localhost:{echo_server.port}") as client:
-        from mcp_grpc.errors import McpError
+        from fastermcp.errors import McpError
 
         with pytest.raises(McpError, match="not found"):
             await client.call_tool("nope", {})
@@ -487,7 +487,7 @@ async def test_grpc_read_resource_template_not_found():
     async def get_item(item_id: str) -> str:
         return f"item:{item_id}"
 
-    from mcp_grpc.errors import McpError
+    from fastermcp.errors import McpError
 
     async with server:
         async with Client(f"localhost:{server.port}") as client:

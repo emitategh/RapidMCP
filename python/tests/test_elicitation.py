@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from mcp_grpc import (
+from fastermcp import (
     BoolField,
     Client,
     Context,
@@ -17,7 +17,7 @@ from mcp_grpc import (
     StringField,
     build_elicitation_schema,
 )
-from mcp_grpc._generated import mcp_pb2
+from fastermcp._generated import mcp_pb2
 
 # ---------------------------------------------------------------------------
 # Unit tests — field descriptors and schema builder
