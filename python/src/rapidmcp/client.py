@@ -47,7 +47,7 @@ class Client:
 
     def __init__(self, target: str, token: str | None = None) -> None:
         self._target = target
-        self._metadata = [("authorization", f"Bearer {token}")] if token else []
+        self._metadata = [("authorization", f"Bearer {token}")] if token is not None else []
         self._pending = PendingRequests()
         self._notifications = NotificationRegistry()
         self._channel: grpc_aio.Channel | None = None
