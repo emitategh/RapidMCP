@@ -11,20 +11,28 @@ gRPC-native MCP (Model Context Protocol) library. Instead of JSON-RPC over HTTP,
 - `pytest` + `pytest-asyncio` (`asyncio_mode = "auto"`)
 - `ruff` — linter + formatter
 - `ty` — type checker (non-blocking / warn-only)
+- TypeScript / Node.js (`@grpc/grpc-js`, `@bufbuild/protobuf`)
+- `vitest` — TypeScript test runner
 
 ## Key commands
 
 ```bash
+# Python
 cd python
-
 uv sync --extra dev          # install all deps
-uv run pytest -v             # run all 167 tests
+uv run pytest -v             # run all 234 tests
 uv run pytest tests/test_integration.py -v   # integration only
 uv run pytest tests/test_middleware.py -v    # middleware only
 uv run pytest tests/test_mounting.py -v      # mounting only
 uv run ruff check src tests  # lint
 uv run ruff format src tests # format
 uv run ty check              # type check (non-blocking)
+
+# TypeScript
+cd typescript
+npm install                  # install deps
+npx vitest run               # run all 103 tests
+npx tsc --noEmit             # type check
 ```
 
 ## Public API (current)
@@ -40,6 +48,7 @@ from rapidmcp import (
 )
 from rapidmcp.errors import McpError, ToolError
 from rapidmcp.integrations.livekit import MCPServerGRPC  # livekit-agents MCPServer adapter
+from rapidmcp.integrations.langchain import RapidMCPToolkit  # LangChain adapter
 ```
 
 ## Project structure
@@ -60,11 +69,13 @@ python/
     elicitation.py                 ← ElicitationField types, build_elicitation_schema
     cli.py                         ← `rapidmcp run server.py` CLI entry point
     testing.py                     ← InProcessChannel for unit tests
+    auth.py                        ← TLS/mTLS auth helpers
     tools/                         ← ToolManager, ToolAnnotations, Tool
     resources/                     ← ResourceManager, Resource
     prompts/                       ← PromptManager, Prompt
     integrations/
       livekit.py                   ← MCPServerGRPC adapter for livekit-agents
+      langchain.py                 ← LangChain tool adapter
     _generated/                    ← protobuf-generated stubs (do not edit)
   tests/
     test_integration.py            ← integration tests (real gRPC loopback)
@@ -77,19 +88,45 @@ python/
     test_client.py                 ← client tests
     test_server.py                 ← server unit tests
     test_session.py                ← session/pending request tests
+    test_auth.py                   ← TLS/mTLS auth tests
+    test_stress.py                 ← stress/load tests
+    test_tls_docker.py             ← TLS tests (requires Docker)
+    test_uri_template.py           ← URI template tests
+    test_integrations_auth.py      ← integration auth tests
+typescript/
+  src/
+    server.ts                      ← RapidMCP server
+    client.ts                      ← Client
+    servicer.ts                    ← gRPC session handler
+    context.ts                     ← Context (explicit DI)
+    middleware.ts                  ← Middleware chain
+    session.ts                     ← PendingRequests
+    auth.ts                        ← TLS/mTLS auth helpers
+    types.ts                       ← shared types
+    errors.ts                      ← McpError, ToolError
+    index.ts                       ← public API exports
+    tools/                         ← ToolManager
+    resources/                     ← ResourceManager
+    prompts/                       ← PromptManager
+    integrations/
+      langchain.ts                 ← LangChain tool adapter
+  tests/                           ← 103 tests
 benchmark/                         ← latency harness vs FastMCP HTTP
 ```
 
-## Current state (2026-04-11)
+## Current state (2026-04-14)
 
-- **167 tests passing**
+- **234 Python tests + 103 TypeScript tests passing**
 - Full MCP spec parity: tools, resources, resource templates, prompts, completions, pagination, sampling, elicitation, logging, progress, notifications (bidirectional), cancellation, resource subscribe, roots, capability negotiation, ping/pong
 - Middleware system: `Middleware` base class, `ToolCallContext`, `functools.partial` chain, built-ins: `TimingMiddleware`, `LoggingMiddleware`, `TimeoutMiddleware`, `ValidationMiddleware`
 - Server composition: `main.mount(sub, prefix="x")` — merges tools/resources/prompts with prefix
 - CLI: `rapidmcp run server.py` / `rapidmcp run server.py:my_app` / `rapidmcp version`
 - LiveKit integration: `MCPServerGRPC` adapter for `livekit-agents`
+- LangChain integration: Python + TypeScript adapters
+- TLS/mTLS auth support
 - Rich elicitation helpers: typed field builders (`BoolField`, `IntField`, `StringField`, `EnumField`, `FloatField`)
 - Content helpers: `Audio`, `Image` for binary content in tool responses
+- TypeScript server with full feature parity
 
 ## Architecture notes
 
@@ -107,5 +144,6 @@ benchmark/                         ← latency harness vs FastMCP HTTP
 | ~~2~~ | Middleware system | ✅ Done |
 | ~~3~~ | Server mounting / composition | ✅ Done |
 | ~~4~~ | CLI (`rapidmcp run server.py`) | ✅ Done |
-| 5 | PyPI package / versioning | Next |
-| 6 | Multi-language client stubs (TypeScript, Go) | Backlog |
+| ~~5~~ | TypeScript server | ✅ Done |
+| 6 | PyPI package / versioning | Next |
+| 7 | Go client stubs | Backlog |
