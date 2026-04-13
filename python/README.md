@@ -154,20 +154,28 @@ async with Client("localhost:50051", tls=ClientTLSConfig(ca="ca.crt"), token="se
 
 | Feature | API |
 |---|---|
-| Tools | `@server.tool()`, `ctx.report_progress()`, `ToolError` |
-| Resources | `@server.resource()`, `@server.resource_template()` |
-| Prompts | `@server.prompt()`, `@server.completion()` |
+| Tools (list, call) | `@server.tool()`, `ToolError` |
+| Resources (list, read, subscribe) | `@server.resource()`, `@server.resource_template()` |
+| Resource templates | `@server.resource_template("res://items/{id}")` |
+| Prompts (list, get) | `@server.prompt()` |
+| Completions | `@server.completion("prompt_name")` |
+| Pagination | cursor-based on all list endpoints |
 | Sampling | `ctx.sample()` — server requests LLM completion from client |
 | Elicitation | `ctx.elicit()` — server requests user input from client |
+| Roots | `ctx.list_roots()` |
 | Logging | `ctx.info/debug/warning/error()` |
+| Progress | `ctx.report_progress(current, total)` |
 | Notifications | bidirectional push, resource subscribe |
-| Authentication | `auth=` callable (sync or async), bearer token |
-| TLS / mTLS | `TLSConfig`, `ClientTLSConfig` |
-| Middleware | `TimingMiddleware`, `LoggingMiddleware`, `TimeoutMiddleware`, `ValidationMiddleware` |
-| Pagination | cursor-based on all list endpoints |
 | Cancellation | in-flight request cancellation |
+| Capability negotiation | automatic on session handshake |
+| Ping / Pong | `client.ping()` |
+| Middleware | `TimingMiddleware`, `LoggingMiddleware`, `TimeoutMiddleware`, `ValidationMiddleware` |
 | Server composition | `server.mount(sub, prefix="x")` |
 | CLI | `rapidmcp run server.py` |
+| Token authentication | `auth=` callable (sync or async), bearer token |
+| TLS / mTLS | `TLSConfig`, `ClientTLSConfig` |
+| LangChain / LangGraph | `rapidmcp.integrations.langchain.MCPToolkit` |
+| LiveKit | `rapidmcp.integrations.livekit.MCPServerGRPC` |
 
 ## Middleware
 
