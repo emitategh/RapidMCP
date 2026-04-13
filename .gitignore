@@ -12,9 +12,8 @@ benchmark/.*.stderr
 
 # uv.lock is intentionally committed — do NOT add it here
 
-# TypeScript (for future plan)
+# TypeScript
 node_modules/
-typescript/src/generated/
 typescript/dist/
 
 # IDE

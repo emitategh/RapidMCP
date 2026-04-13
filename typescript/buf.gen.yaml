@@ -1,0 +1,10 @@
+version: v2
+plugins:
+  - local: protoc-gen-ts_proto
+    out: generated
+    opt:
+      - esModuleInterop=true
+      - outputServices=nice-grpc
+      - outputServices=generic-definitions
+      - forceLong=bigint
+      - oneof=unions

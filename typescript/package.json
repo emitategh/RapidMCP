@@ -1,0 +1,39 @@
+{
+  "name": "rapidmcp",
+  "version": "0.1.0",
+  "description": "gRPC-native MCP (Model Context Protocol) client for TypeScript",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "generated"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "generate": "buf generate ../proto",
+    "lint": "tsc --noEmit"
+  },
+  "keywords": ["mcp", "grpc", "llm", "tools", "model-context-protocol", "ai", "agents"],
+  "license": "MIT",
+  "author": "Emiliano Christiansen",
+  "dependencies": {
+    "nice-grpc": "^2.1.10",
+    "nice-grpc-common": "^2.0.2"
+  },
+  "devDependencies": {
+    "@bufbuild/buf": "^1.47.2",
+    "ts-proto": "^2.6.1",
+    "typescript": "^5.7.0",
+    "vitest": "^3.1.1",
+    "@types/node": "^22.0.0"
+  }
+}
