@@ -13,6 +13,12 @@ import {
   type DeepPartial,
   ServerNotification_Type,
   ClientNotification_Type,
+  type SamplingRequest,
+  type SamplingResponse,
+  type ElicitationRequest,
+  type ElicitationResponse,
+  type Root,
+  type ListRootsResponse,
 } from "../generated/mcp.js";
 import { McpError } from "./errors.js";
 import { AsyncQueue, PendingRequests, NotificationRegistry } from "./session.js";
@@ -62,6 +68,10 @@ export class Client {
   private _refCount = 0;
   private _connected = false;
 
+  private _samplingHandler: ((req: SamplingRequest) => Promise<SamplingResponse>) | null = null;
+  private _elicitationHandler: ((req: ElicitationRequest) => Promise<ElicitationResponse>) | null = null;
+  private _rootsHandler: (() => Promise<Root[]>) | null = null;
+
   constructor(target: string, opts: ClientOptions = {}) {
     this._target = target;
     this._opts = opts;
@@ -71,6 +81,11 @@ export class Client {
   /** Server info populated after connect(). */
   get serverInfo(): ServerInfo | null {
     return this._serverInfo;
+  }
+
+  /** Whether the client is currently connected to the server. */
+  get isConnected(): boolean {
+    return this._connected;
   }
 
   /** Connect to the server: open channel, start bidi stream, run initialize handshake. */
@@ -107,9 +122,13 @@ export class Client {
       message: {
         $case: "initialize" as const,
         initialize: {
-          clientName: "rapidmcp-ts",
+          clientName: "rapidmcp-typescript",
           clientVersion: "0.1.0",
-          capabilities: { sampling: false, elicitation: false, roots: false },
+          capabilities: {
+            sampling: this._samplingHandler !== null,
+            elicitation: this._elicitationHandler !== null,
+            roots: this._rootsHandler !== null,
+          },
         },
       },
     })) as { serverName: string; serverVersion: string; capabilities?: { tools: boolean; toolsListChanged: boolean; resources: boolean; prompts: boolean } };
@@ -159,17 +178,62 @@ export class Client {
             break;
           }
 
-          case "sampling":
-            // Server-initiated sampling — not implemented yet, ignore
+          case "sampling": {
+            const rid = envelope.requestId;
+            if (this._samplingHandler) {
+              this._handleServerPush(rid, async () => {
+                const result = await this._samplingHandler!(msg.sampling);
+                this._sendQueue.enqueue({
+                  requestId: rid,
+                  message: { $case: "samplingReply", samplingReply: result },
+                });
+              });
+            } else {
+              this._sendQueue.enqueue({
+                requestId: rid,
+                message: { $case: "error", error: { code: -32600, message: "sampling not supported by this client" } },
+              });
+            }
             break;
+          }
 
-          case "elicitation":
-            // Server-initiated elicitation — not implemented yet, ignore
+          case "elicitation": {
+            const rid = envelope.requestId;
+            if (this._elicitationHandler) {
+              this._handleServerPush(rid, async () => {
+                const result = await this._elicitationHandler!(msg.elicitation);
+                this._sendQueue.enqueue({
+                  requestId: rid,
+                  message: { $case: "elicitationReply", elicitationReply: result },
+                });
+              });
+            } else {
+              this._sendQueue.enqueue({
+                requestId: rid,
+                message: { $case: "error", error: { code: -32600, message: "elicitation not supported by this client" } },
+              });
+            }
             break;
+          }
 
-          case "rootsRequest":
-            // Server requesting roots — not implemented yet, ignore
+          case "rootsRequest": {
+            const rid = envelope.requestId;
+            if (this._rootsHandler) {
+              this._handleServerPush(rid, async () => {
+                const roots = await this._rootsHandler!();
+                this._sendQueue.enqueue({
+                  requestId: rid,
+                  message: { $case: "rootsReply", rootsReply: { roots } },
+                });
+              });
+            } else {
+              this._sendQueue.enqueue({
+                requestId: rid,
+                message: { $case: "error", error: { code: -32600, message: "roots not supported by this client" } },
+              });
+            }
             break;
+          }
 
           default: {
             // Regular response — resolve the pending request.
@@ -187,6 +251,16 @@ export class Client {
         err instanceof Error ? err : new Error(String(err)),
       );
     }
+  }
+
+  /** Run a server-push handler as fire-and-forget; send error reply on failure. */
+  private _handleServerPush(rid: bigint, fn: () => Promise<void>): void {
+    fn().catch(() => {
+      this._sendQueue.enqueue({
+        requestId: rid,
+        message: { $case: "error", error: { code: -32603, message: "Handler failed" } },
+      });
+    });
   }
 
   /** Send a request envelope and wait for the correlated response. */
@@ -231,13 +305,54 @@ export class Client {
   async callTool(
     name: string,
     args: Record<string, unknown> = {},
+    opts?: { signal?: AbortSignal },
   ): Promise<CallToolResult> {
-    const resp = (await this._request({
+    const requestId = this._pending.nextId();
+    const promise = this._pending.create(requestId);
+
+    this._sendQueue.enqueue({
+      requestId,
       message: {
         $case: "callTool" as const,
         callTool: { name, arguments: JSON.stringify(args) },
       },
-    })) as Parameters<typeof convertCallToolResult>[0];
+    } as DeepPartial<ClientEnvelope>);
+
+    // Build race candidates
+    const racers: Promise<unknown>[] = [promise];
+
+    // Timeout
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      const timer = setTimeout(
+        () => reject(new McpError(-1, "Request timeout")),
+        this._requestTimeout,
+      );
+      if (typeof timer === "object" && "unref" in timer) {
+        (timer as NodeJS.Timeout).unref();
+      }
+    });
+    racers.push(timeoutPromise);
+
+    // AbortSignal
+    if (opts?.signal) {
+      const signal = opts.signal;
+      if (signal.aborted) {
+        this.cancel(requestId);
+        throw new McpError(-1, "Aborted");
+      }
+      const abortPromise = new Promise<never>((_, reject) => {
+        const onAbort = () => {
+          this.cancel(requestId);
+          reject(new McpError(-1, "Aborted"));
+        };
+        signal.addEventListener("abort", onAbort, { once: true });
+        // Clean up listener when the main promise settles
+        promise.finally(() => signal.removeEventListener("abort", onAbort));
+      });
+      racers.push(abortPromise);
+    }
+
+    const resp = (await Promise.race(racers)) as Parameters<typeof convertCallToolResult>[0];
     return convertCallToolResult(resp);
   }
 
@@ -264,8 +379,9 @@ export class Client {
     return convertReadResourceResult(resp);
   }
 
-  async subscribeResource(uri: string): Promise<void> {
-    await this._request({
+  subscribeResource(uri: string): void {
+    this._sendQueue.enqueue({
+      requestId: 0n,
       message: {
         $case: "subscribeRes" as const,
         subscribeRes: { uri },
@@ -368,6 +484,21 @@ export class Client {
     handler: (payload: string) => void | Promise<void>,
   ): void {
     this._notifications.register(type, handler);
+  }
+
+  /** Register a handler for server-initiated sampling requests. */
+  setSamplingHandler(handler: (req: SamplingRequest) => Promise<SamplingResponse>): void {
+    this._samplingHandler = handler;
+  }
+
+  /** Register a handler for server-initiated elicitation requests. */
+  setElicitationHandler(handler: (req: ElicitationRequest) => Promise<ElicitationResponse>): void {
+    this._elicitationHandler = handler;
+  }
+
+  /** Register a handler for server-initiated roots requests. */
+  setRootsHandler(handler: () => Promise<Root[]>): void {
+    this._rootsHandler = handler;
   }
 
   // ── Lifecycle ─────────────────────────────────────────────

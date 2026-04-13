@@ -98,6 +98,44 @@ describe("Client integration", () => {
     expect(result).toBe(true);
   });
 
+  it("isConnected reflects connection state", async () => {
+    const c = new Client(server.address);
+    expect(c.isConnected).toBe(false);
+    await c.connect();
+    expect(c.isConnected).toBe(true);
+    await c.close();
+    expect(c.isConnected).toBe(false);
+  });
+
+  it("subscribeResource does not hang (fire-and-forget)", () => {
+    // subscribeResource is synchronous (void return) — should not block
+    client.subscribeResource("file:///hello.txt");
+  });
+
+  it("setSamplingHandler stores the handler", () => {
+    const handler = async () => ({ role: "assistant", model: "test", content: { type: "text", text: "hi", data: new Uint8Array(), mimeType: "", uri: "", toolUseId: "", toolName: "", toolInput: "", toolResultId: "" } });
+    // Should not throw
+    client.setSamplingHandler(handler);
+  });
+
+  it("setElicitationHandler stores the handler", () => {
+    const handler = async () => ({ action: "accept", content: "ok" });
+    client.setElicitationHandler(handler);
+  });
+
+  it("setRootsHandler stores the handler", () => {
+    const handler = async () => [{ uri: "file:///root", name: "root" }];
+    client.setRootsHandler(handler);
+  });
+
+  it("callTool supports AbortSignal (pre-aborted)", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      client.callTool("add", { a: 1, b: 2 }, { signal: controller.signal }),
+    ).rejects.toThrow("Aborted");
+  });
+
   it("ref-counted using()", async () => {
     const c1 = new Client(server.address);
     await c1.using();
