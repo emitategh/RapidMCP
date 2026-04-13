@@ -48,7 +48,7 @@ export class ToolManager {
           isError: true,
         };
       }
-      validatedArgs = result.data;
+      validatedArgs = result.data as Record<string, unknown>;
     }
 
     try {

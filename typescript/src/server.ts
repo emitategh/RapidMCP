@@ -96,7 +96,8 @@ export class RapidMCP {
     });
 
     this._server = createServer();
-    this._server.add(McpDefinition, servicer);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- DeepPartial union type mismatch
+    this._server.add(McpDefinition, servicer as any);
     const listenAddr = `${host}:${port}`;
     const actualPort = await this._server.listen(listenAddr);
     return actualPort;
