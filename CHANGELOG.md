@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.1] - 2026-04-13
 
+### Added
+- PyPI README feature table expanded to cover all 22 MCP spec features: Completions, Roots, Progress, Capability negotiation, Ping/Pong, LangChain and LiveKit integrations
+
 ### Fixed
 - `license` field updated to SPDX string format (`"MIT"`) — removes setuptools deprecation warning
 - Removed redundant `License :: OSI Approved :: MIT License` classifier (superseded by SPDX)
