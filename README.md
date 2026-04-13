@@ -16,6 +16,8 @@ RapidMCP is a gRPC-native transport for the [Model Context Protocol](https://mod
 
 ## Installation
 
+### Python
+
 ```bash
 pip install rapidmcp
 ```
@@ -26,6 +28,14 @@ Optional integrations:
 pip install 'rapidmcp[langchain]'   # LangChain / LangGraph
 pip install 'rapidmcp[livekit]'     # livekit-agents
 ```
+
+### TypeScript / Node.js
+
+```bash
+npm install @emitate/rapidmcp
+```
+
+See [`typescript/README.md`](typescript/README.md) for full TypeScript documentation.
 
 ## Quick start
 
