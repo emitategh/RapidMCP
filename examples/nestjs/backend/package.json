@@ -1,0 +1,25 @@
+{
+  "name": "nestjs-mcp-backend",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@nestjs/common": "^10",
+    "@nestjs/core": "^10",
+    "@nestjs/platform-express": "^10",
+    "reflect-metadata": "^0.2",
+    "rxjs": "^7",
+    "@langchain/anthropic": "^1.3",
+    "@langchain/langgraph": "^1.2",
+    "@langchain/core": "^1.1",
+    "@emitate/rapidmcp": "file:../../../typescript"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}

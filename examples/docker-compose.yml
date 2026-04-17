@@ -1,0 +1,48 @@
+services:
+  py-mcp-server:
+    build:
+      context: ..
+      dockerfile: examples/fastapi/mcp-server/Dockerfile
+    networks:
+      - mcp-net
+
+  py-backend:
+    build:
+      context: ..
+      dockerfile: examples/fastapi/backend/Dockerfile
+    ports:
+      - "8010:8000"
+    env_file:
+      - .env
+    environment:
+      MCP_ADDRESS: py-mcp-server:50051
+    depends_on:
+      - py-mcp-server
+    networks:
+      - mcp-net
+
+  ts-mcp-server:
+    build:
+      context: ..
+      dockerfile: examples/nestjs/mcp-server/Dockerfile
+    networks:
+      - mcp-net
+
+  ts-backend:
+    build:
+      context: ..
+      dockerfile: examples/nestjs/backend/Dockerfile
+    ports:
+      - "8011:8001"
+    env_file:
+      - .env
+    environment:
+      MCP_ADDRESS: ts-mcp-server:50051
+    depends_on:
+      - ts-mcp-server
+    networks:
+      - mcp-net
+
+networks:
+  mcp-net:
+    driver: bridge

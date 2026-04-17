@@ -1,40 +1,37 @@
-"""LangChain integration — MCPToolkit for RapidMCP gRPC servers.
+"""LangChain integration — RapidMCPClient for RapidMCP gRPC servers.
 
-``MCPToolkit`` fetches tools from a RapidMCP gRPC server and returns them as
-LangChain ``StructuredTool`` instances ready for use with any LangChain agent.
+``RapidMCPClient`` aggregates tools, resources, and prompts from one or more
+RapidMCP gRPC servers and exposes them as LangChain-compatible objects.
 
 Usage::
 
-    from rapidmcp.integrations.langchain import MCPToolkit
+    from rapidmcp.integrations.langchain import RapidMCPClient
 
-    async with MCPToolkit("mcp-server:50051") as toolkit:
-        tools = await toolkit.aget_tools()
-        agent = create_react_agent(llm, tools)
-        result = await agent.ainvoke({"messages": [("human", "...")]})
-
-    # Or manage the lifecycle explicitly:
-    toolkit = MCPToolkit("mcp-server:50051")
-    await toolkit.client.connect()
-    tools = await toolkit.aget_tools()
-    ...
-    await toolkit.client.close()
+    async with RapidMCPClient({"docs": {"address": "docs:50051"}}) as rc:
+        tools = await rc.get_tools()
 
 Requires: pip install langchain-core
 """
 
 from __future__ import annotations
 
+import asyncio
 import base64
+import contextlib
 import logging
+from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from typing import Any
 
 from rapidmcp.auth import ClientTLSConfig
 from rapidmcp.client import Client
-from rapidmcp.types import CallToolResult, Tool
+from rapidmcp.types import CallToolResult, GetPromptResult, ReadResourceResult, Tool
 
 logger = logging.getLogger(__name__)
 
 try:
+    from langchain_core.document_loaders.blob_loaders import Blob
+    from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
     from langchain_core.tools import BaseTool, StructuredTool
     from pydantic import BaseModel, Field, create_model
 except ImportError as e:
@@ -192,81 +189,222 @@ def _make_tool(client: Client, mcp_tool: Tool) -> BaseTool:
 
 
 # ---------------------------------------------------------------------------
-# Public toolkit
+# ReadResourceResult → Blob
 # ---------------------------------------------------------------------------
 
 
-class MCPToolkit:
-    """LangChain toolkit backed by a RapidMCP gRPC server.
+def _read_resource_to_blob(uri: str, result: ReadResourceResult) -> Blob:
+    """Flatten a ``ReadResourceResult`` into a single LangChain ``Blob``.
 
-    Fetches the server's tool list (with automatic pagination) and returns each
-    tool as a LangChain ``StructuredTool``.  Use as an async context manager to
-    manage the underlying gRPC connection lifetime automatically.
+    Multiple content items are rare. Text items are concatenated; binary
+    items are appended; the first non-empty mime_type wins.
+    """
+    text_parts: list[str] = []
+    binary: bytes | None = None
+    mime: str = ""
 
-    Args:
-        address: gRPC server address, e.g. ``"mcp-server:50051"``.
-        token: Optional bearer token sent as ``authorization`` metadata on every call.
-        tls: Optional :class:`~rapidmcp.auth.ClientTLSConfig` for TLS/mTLS connections.
-        allowed_tools: Optional allowlist of tool names.  ``None`` = all tools.
+    for c in result.content:
+        if c.mime_type and not mime:
+            mime = c.mime_type
+        if c.type == "text":
+            text_parts.append(c.text)
+        elif c.data:
+            binary = (binary or b"") + c.data
+
+    if binary is not None:
+        return Blob(data=binary, mimetype=mime or "application/octet-stream", metadata={"uri": uri})
+    return Blob(
+        data="".join(text_parts).encode(), mimetype=mime or "text/plain", metadata={"uri": uri}
+    )
+
+
+# ---------------------------------------------------------------------------
+# GetPromptResult → LangChain messages
+# ---------------------------------------------------------------------------
+
+_ROLE_TO_MESSAGE: dict[str, type[BaseMessage]] = {
+    "user": HumanMessage,
+    "human": HumanMessage,
+    "assistant": AIMessage,
+    "ai": AIMessage,
+    "system": SystemMessage,
+}
+
+
+def _get_prompt_to_messages(result: GetPromptResult) -> list[BaseMessage]:
+    """Convert an MCP ``GetPromptResult`` to a list of LangChain messages.
+
+    Non-text content items are serialised as ``[image: <mime>]`` etc. —
+    LangChain's agent loop feeds these verbatim into the LLM.
+    """
+    out: list[BaseMessage] = []
+    for pm in result.messages:
+        cls = _ROLE_TO_MESSAGE.get(pm.role, HumanMessage)
+        c = pm.content
+        if c.type == "text":
+            body: str = c.text
+        elif c.type == "image":
+            body = f"[image: {c.mime_type}, {len(c.data)} bytes]"
+        elif c.type == "audio":
+            body = f"[audio: {c.mime_type}, {len(c.data)} bytes]"
+        else:
+            body = f"[resource: {c.uri}]"
+        out.append(cls(content=body))
+    return out
+
+
+@dataclass(frozen=True)
+class _ServerConfig:
+    address: str
+    token: str | None = None
+    tls: ClientTLSConfig | None = None
+    allowed_tools: frozenset[str] | None = None
+
+
+class RapidMCPClient:
+    """Multi-server LangChain adapter for RapidMCP gRPC servers.
+
+    Mirrors ``langchain_mcp_adapters.client.MultiServerMCPClient``'s surface
+    over gRPC. Accepts a mapping of ``{server_name: {address, token, tls,
+    allowed_tools}}`` and aggregates tools/resources/prompts across servers.
 
     Example::
 
-        async with MCPToolkit("localhost:50051") as toolkit:
-            tools = await toolkit.aget_tools()
-            # pass `tools` to any LangChain agent
+        async with RapidMCPClient({
+            "docs":  {"address": "docs:50051"},
+            "sql":   {"address": "sql:50051",  "token": "..."},
+        }) as rc:
+            tools = await rc.get_tools()
     """
 
-    def __init__(
-        self,
-        address: str,
-        *,
-        token: str | None = None,
-        tls: ClientTLSConfig | None = None,
-        allowed_tools: list[str] | None = None,
-    ) -> None:
-        self._address = address
-        self._client = Client(address, token=token, tls=tls)
-        self._allowed_tools = set(allowed_tools) if allowed_tools else None
+    def __init__(self, servers: dict[str, dict[str, Any]]) -> None:
+        if not servers:
+            raise ValueError("RapidMCPClient requires at least one server config")
+        self._configs: dict[str, _ServerConfig] = {}
+        self._clients: dict[str, Client] = {}
+        for name, cfg in servers.items():
+            sc = _ServerConfig(
+                address=cfg["address"],
+                token=cfg.get("token"),
+                tls=cfg.get("tls"),
+                allowed_tools=(
+                    frozenset(cfg["allowed_tools"]) if cfg.get("allowed_tools") else None
+                ),
+            )
+            self._configs[name] = sc
+            self._clients[name] = Client(sc.address, token=sc.token, tls=sc.tls)
 
     @property
-    def client(self) -> Client:
-        """The underlying :class:`~rapidmcp.client.Client` instance."""
-        return self._client
+    def servers(self) -> list[str]:
+        """Names of the configured servers, in insertion order."""
+        return list(self._configs)
 
-    async def aget_tools(self) -> list[BaseTool]:
-        """Fetch all tools from the server and return them as LangChain tools.
+    def client(self, server_name: str) -> Client:
+        """Return the underlying :class:`~rapidmcp.client.Client` for one server."""
+        try:
+            return self._clients[server_name]
+        except KeyError as exc:
+            raise KeyError(
+                f"Unknown server {server_name!r}. Configured: {sorted(self._configs)}"
+            ) from exc
 
-        Follows pagination automatically so all tools are returned even when
-        the server uses cursors.
+    async def connect(self) -> None:
+        """Open gRPC streams to every configured server, concurrently."""
+        await asyncio.gather(*(c.connect() for c in self._clients.values()))
+
+    async def close(self) -> None:
+        """Close every underlying Client, concurrently. Exceptions surface."""
+        await asyncio.gather(*(c.close() for c in self._clients.values()))
+
+    async def get_tools(self, *, server_name: str | None = None) -> list[BaseTool]:
+        """Fetch tools from one or all servers.
+
+        Args:
+            server_name: If given, only return tools from that server. Otherwise
+                tools from every configured server are aggregated.
+
+        Tool-name collisions across servers are NOT deduplicated — configure
+        ``allowed_tools`` per server if you expect overlap.
         """
+        names = [server_name] if server_name is not None else list(self._configs)
+        for n in names:
+            if n not in self._configs:
+                raise KeyError(f"Unknown server {n!r}")
+
+        results = await asyncio.gather(*(self._list_all_tools(n) for n in names))
+
         lc_tools: list[BaseTool] = []
-        cursor: str | None = None
-
-        while True:
-            result = await self._client.list_tools(cursor=cursor)
-            for mcp_tool in result.items:
-                if self._allowed_tools and mcp_tool.name not in self._allowed_tools:
+        for name, mcp_tools in zip(names, results, strict=True):
+            allowed = self._configs[name].allowed_tools
+            client = self._clients[name]
+            for mcp_tool in mcp_tools:
+                if allowed is not None and mcp_tool.name not in allowed:
                     continue
-                lc_tools.append(_make_tool(self._client, mcp_tool))
-            if not result.next_cursor:
-                break
-            cursor = result.next_cursor
-
-        logger.info(
-            "MCPToolkit %s — %d tool(s): %s",
-            self._address,
-            len(lc_tools),
-            [t.name for t in lc_tools],
-        )
+                lc_tools.append(_make_tool(client, mcp_tool))
         return lc_tools
 
-    async def __aenter__(self) -> MCPToolkit:
-        await self._client.connect()
+    async def _list_all_tools(self, server_name: str) -> list[Tool]:
+        client = self._clients[server_name]
+        items: list[Tool] = []
+        cursor: str | None = None
+        while True:
+            result = await client.list_tools(cursor=cursor)
+            items.extend(result.items)
+            if not result.next_cursor:
+                return items
+            cursor = result.next_cursor
+
+    async def get_resources(
+        self,
+        server_name: str,
+        *,
+        uris: list[str] | None = None,
+    ) -> list[Blob]:
+        """Read resources from one server as LangChain ``Blob`` objects.
+
+        Args:
+            server_name: Which configured server to read from.
+            uris: If given, read exactly these URIs. Otherwise, list every
+                resource the server exposes (with pagination) and read them all.
+        """
+        client = self.client(server_name)
+        if uris is None:
+            uris = []
+            cursor: str | None = None
+            while True:
+                listing = await client.list_resources(cursor=cursor)
+                uris.extend(r.uri for r in listing.items)
+                if not listing.next_cursor:
+                    break
+                cursor = listing.next_cursor
+
+        reads = await asyncio.gather(*(client.read_resource(u) for u in uris))
+        return [_read_resource_to_blob(u, r) for u, r in zip(uris, reads, strict=True)]
+
+    async def get_prompt(
+        self,
+        server_name: str,
+        prompt_name: str,
+        *,
+        arguments: dict[str, str] | None = None,
+    ) -> list[BaseMessage]:
+        """Fetch and render a prompt from one server as LangChain messages."""
+        result = await self.client(server_name).get_prompt(prompt_name, arguments or {})
+        return _get_prompt_to_messages(result)
+
+    @contextlib.asynccontextmanager
+    async def session(self, server_name: str) -> AsyncIterator[Client]:
+        """Async context manager yielding the raw :class:`Client` for one server.
+
+        Useful for features not wrapped by this adapter — ``ping``, resource
+        subscription, sampling handlers, completion, etc. Lifecycle is owned
+        by the :class:`RapidMCPClient`; this does not open or close the stream.
+        """
+        yield self.client(server_name)
+
+    async def __aenter__(self) -> RapidMCPClient:
+        await self.connect()
         return self
 
     async def __aexit__(self, *exc: object) -> None:
-        await self._client.close()
-
-    def __repr__(self) -> str:
-        allowed = f", allowed_tools={sorted(self._allowed_tools)}" if self._allowed_tools else ""
-        return f"MCPToolkit(address={self._address!r}{allowed})"
+        await self.close()

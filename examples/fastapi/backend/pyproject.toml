@@ -1,0 +1,20 @@
+[project]
+name = "mcp-example-backend"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "langchain",
+    "langchain-anthropic",
+    "langchain-core",
+    "langgraph",
+    "rapidmcp",
+]
+
+[tool.uv.sources]
+rapidmcp = { path = "../../../python" }
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

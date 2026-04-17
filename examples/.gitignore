@@ -1,0 +1,15 @@
+# Environment
+.env
+
+# Python
+**/.venv/
+**/__pycache__/
+**/*.egg-info/
+**/.ruff_cache/
+*.pyc
+
+# Node
+**/node_modules/
+**/dist/
+
+# Lockfiles are committed — do NOT ignore uv.lock or package-lock.json

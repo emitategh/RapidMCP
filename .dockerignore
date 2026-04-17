@@ -1,0 +1,30 @@
+# Build artefacts and caches
+**/.venv/
+**/node_modules/
+**/dist/
+# Exception: the library's compiled dist/ is needed so in-image npm install
+# can resolve the `file:/typescript` dependency.
+!typescript/dist/
+**/build/
+**/*.egg-info/
+**/__pycache__/
+**/.pytest_cache/
+**/.ruff_cache/
+
+# Editor / OS / git
+**/.git/
+**/.idea/
+**/.vscode/
+**/.DS_Store
+
+# Benchmark results and docs (not needed in images)
+benchmark/results/
+docs/
+
+# Test artefacts
+**/.coverage
+**/coverage/
+
+# Examples loopback — don't recursively include examples in examples' own images
+examples/**/wheels/
+examples/**/*.tgz

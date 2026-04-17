@@ -48,8 +48,29 @@ from rapidmcp import (
 )
 from rapidmcp.errors import McpError, ToolError
 from rapidmcp.integrations.livekit import MCPServerGRPC  # livekit-agents MCPServer adapter
-from rapidmcp.integrations.langchain import RapidMCPToolkit  # LangChain adapter
+from rapidmcp.integrations.langchain import RapidMCPClient  # LangChain adapter
 ```
+
+## LangChain integration
+
+Use `RapidMCPClient` to wire one or more RapidMCP gRPC servers into any
+LangChain agent. Shape mirrors `langchain-mcp-adapters.MultiServerMCPClient`:
+
+```python
+from rapidmcp.integrations.langchain import RapidMCPClient
+
+async with RapidMCPClient({
+    "docs": {"address": "docs:50051"},
+    "sql":  {"address": "sql:50051", "token": "...", "allowed_tools": ["query"]},
+}) as rc:
+    tools     = await rc.get_tools()                                   # aggregated across servers
+    prompt    = await rc.get_prompt("docs", "summarise", arguments={"topic": "grpc"})
+    blobs     = await rc.get_resources("docs", uris=["file:///readme.md"])
+    async with rc.session("sql") as sess:
+        await sess.ping()
+```
+
+TypeScript mirrors this shape — `RapidMCPClient` from `rapidmcp/integrations/langchain`.
 
 ## Project structure
 
