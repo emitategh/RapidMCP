@@ -50,6 +50,28 @@ async def _grpc_adapter_for(server: RapidMCP, **kwargs: Any):
             adapter._connected = False
 
 
+async def test_list_tools_reuses_cache_until_invalidated() -> None:
+    """list_tools should not re-hit the server when the cache is clean."""
+    server = _make_server()
+    async with _grpc_adapter_for(server) as grpc:
+        first = await grpc.list_tools()
+
+        # Swap the underlying client for a sentinel — if the adapter hits it,
+        # we'll know the cache wasn't used.
+        class _Explode:
+            async def list_tools(self):
+                raise AssertionError("cache was bypassed — list_tools called a second time")
+        grpc._grpc_client = _Explode()
+
+        second = await grpc.list_tools()
+        assert second is first  # same list object returned from cache
+
+        # After invalidate, a fresh call must re-query — which now blows up.
+        grpc.invalidate_cache()
+        with pytest.raises(AssertionError, match="cache was bypassed"):
+            await grpc.list_tools()
+
+
 async def test_list_tools_and_call_tool() -> None:
     server = _make_server()
     async with _grpc_adapter_for(server) as grpc:
