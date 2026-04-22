@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import contextlib
 import logging
 from typing import Any
 
@@ -202,12 +201,10 @@ class MCPServerGRPC(MCPServer):
         await self._grpc_client.close()
         logger.info("MCPServerGRPC disconnected from %s", self._address)
 
-    @contextlib.asynccontextmanager
-    async def client_streams(self):  # type: ignore[override]
-        # Never called — initialize() and list_tools() bypass the JSON-RPC path.
-        # Implemented only to satisfy the abstract base class requirement.
+    def client_streams(self):  # type: ignore[override]
+        # MCPServerGRPC bypasses the JSON-RPC ClientSession path entirely —
+        # initialize() and list_tools() talk to the gRPC Client directly.
         raise NotImplementedError("MCPServerGRPC uses gRPC transport, not client_streams")
-        yield  # pragma: no cover
 
     def __repr__(self) -> str:
         allowed = f", allowed_tools={list(self._allowed_tools)}" if self._allowed_tools else ""

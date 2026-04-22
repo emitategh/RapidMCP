@@ -203,6 +203,15 @@ async def test_multi_content_uses_default_resolver() -> None:
         assert any(p.get("type") == "image" for p in parsed)
 
 
+async def test_client_streams_raises_not_implemented() -> None:
+    """MCPServerGRPC uses gRPC transport; the base-class JSON-RPC path
+    must never be entered. Calling client_streams() must raise cleanly."""
+    server = _make_server()
+    async with _grpc_adapter_for(server) as grpc:
+        with pytest.raises(NotImplementedError, match="gRPC transport"):
+            grpc.client_streams()
+
+
 async def test_list_tools_and_call_tool() -> None:
     server = _make_server()
     async with _grpc_adapter_for(server) as grpc:
