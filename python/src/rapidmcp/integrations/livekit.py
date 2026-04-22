@@ -82,6 +82,9 @@ class MCPServerGRPC(MCPServer):
         logger.info("MCPServerGRPC connected to %s", self._address)
 
     async def list_tools(self) -> list[MCPTool]:
+        if not self._cache_dirty and self._lk_tools is not None:
+            return self._lk_tools
+
         result = await self._grpc_client.list_tools()
         tools: list[MCPTool] = []
         for t in result.items:
