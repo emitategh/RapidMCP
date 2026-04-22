@@ -102,7 +102,17 @@ class MCPServerGRPC(MCPServer):
             async def _call(raw_arguments: dict[str, Any], _n: str = _name) -> str:
                 tool_result = await self._grpc_client.call_tool(_n, raw_arguments)
                 if tool_result.is_error:
-                    raise ToolError("\n".join(c.text for c in tool_result.content if c.text))
+                    parts: list[str] = []
+                    for c in tool_result.content:
+                        if c.type == "text" and c.text:
+                            parts.append(c.text)
+                        elif c.type in ("image", "audio"):
+                            parts.append(f"[{c.type}: {c.mime_type}, {len(c.data)} bytes]")
+                        elif c.type == "resource":
+                            parts.append(f"[resource: {c.uri}]")
+                    raise ToolError(
+                        "\n".join(parts) if parts else f"Tool '{_n}' failed without a message"
+                    )
                 if not tool_result.content:
                     raise ToolError(f"Tool '{_n}' returned no content")
                 c0 = tool_result.content[0]

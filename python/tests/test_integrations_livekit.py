@@ -106,6 +106,52 @@ async def test_list_tools_reuses_cache_until_invalidated() -> None:
             await grpc.list_tools()
 
 
+async def test_tool_error_message_includes_non_text_parts() -> None:
+    """When a tool's error payload includes non-text content, the ToolError
+    message must still convey that something was there (not be silently dropped)."""
+    from rapidmcp.types import CallToolResult, ContentItem
+    from livekit.agents.llm.mcp import MCPTool
+    from livekit.agents.llm.tool_context import ToolError as LKToolError
+
+    # Build a fake error result that contains an image part (non-text)
+    error_result = CallToolResult(
+        is_error=True,
+        content=[
+            ContentItem(type="text", text="pre-text"),
+            ContentItem(type="image", data=b"\x00\x01", mime_type="image/png"),
+        ],
+    )
+
+    app = RapidMCP(name="t", version="0")
+
+    @app.tool()
+    async def boom() -> str:
+        """A tool that always errors."""
+        raise RuntimeError("won't matter — we mock the result")
+
+    async with _grpc_adapter_for(app) as grpc:
+        # Patch the underlying gRPC client to return our crafted error result
+        real_call = grpc._grpc_client.call_tool
+
+        async def _fake_call(name, arguments):
+            return error_result
+
+        grpc._grpc_client.call_tool = _fake_call  # type: ignore[method-assign]
+
+        tools = await grpc.list_tools()
+        # Reset grpc_client patching for call_tool but keep list from cache
+        grpc._grpc_client.call_tool = _fake_call  # type: ignore[method-assign]
+
+        boom_tool = next(t for t in tools if t.info.name == "boom")
+        with pytest.raises(LKToolError) as exc_info:
+            await boom_tool(raw_arguments={})
+
+        msg = str(exc_info.value)
+        assert "pre-text" in msg
+        # The image part should surface as *something* — not be silently dropped.
+        assert "image" in msg or "bytes" in msg or len(msg) > len("pre-text")
+
+
 async def test_list_tools_and_call_tool() -> None:
     server = _make_server()
     async with _grpc_adapter_for(server) as grpc:
