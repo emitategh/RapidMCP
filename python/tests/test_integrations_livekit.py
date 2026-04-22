@@ -179,6 +179,30 @@ async def test_custom_tool_result_resolver_is_invoked() -> None:
         assert ctx.result.content[0].text == "hi"
 
 
+async def test_multi_content_uses_default_resolver() -> None:
+    """With no custom resolver, a multi-content response is JSON-serialized
+    by the library's default resolver (not our old hand-rolled shape)."""
+    import json as _json
+    from rapidmcp.content import Image
+
+    app = RapidMCP(name="t", version="0")
+
+    @app.tool()
+    async def mixed():
+        """Return mixed content."""
+        return ["hello", Image(data=b"\xff\xd8", mime_type="image/jpeg")]
+
+    async with _grpc_adapter_for(app) as grpc:
+        tools = await grpc.list_tools()
+        (tool,) = tools
+        out = await tool(raw_arguments={})
+        assert isinstance(out, str)
+        parsed = _json.loads(out)
+        assert isinstance(parsed, list)
+        assert any(p.get("type") == "text" and p.get("text") == "hello" for p in parsed)
+        assert any(p.get("type") == "image" for p in parsed)
+
+
 async def test_list_tools_and_call_tool() -> None:
     server = _make_server()
     async with _grpc_adapter_for(server) as grpc:
