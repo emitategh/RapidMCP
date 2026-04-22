@@ -152,6 +152,33 @@ async def test_tool_error_message_includes_non_text_parts() -> None:
         assert "image" in msg or "bytes" in msg or len(msg) > len("pre-text")
 
 
+async def test_custom_tool_result_resolver_is_invoked() -> None:
+    import mcp.types as mcp_types
+    from livekit.agents.llm.mcp import MCPToolResultContext
+
+    server = _make_server()
+    seen: list[MCPToolResultContext] = []
+
+    def resolver(ctx: MCPToolResultContext) -> str:
+        seen.append(ctx)
+        return "resolver-said-this"
+
+    async with _grpc_adapter_for(server, tool_result_resolver=resolver) as grpc:
+        tools = await grpc.list_tools()
+        echo_tool = next(t for t in tools if t.info.name == "echo")
+        out = await echo_tool(raw_arguments={"text": "hi"})
+        assert out == "resolver-said-this"
+        assert len(seen) == 1
+        ctx = seen[0]
+        assert ctx.tool_name == "echo"
+        assert ctx.arguments == {"text": "hi"}
+        assert isinstance(ctx.result, mcp_types.CallToolResult)
+        assert not ctx.result.isError
+        assert len(ctx.result.content) == 1
+        assert ctx.result.content[0].type == "text"
+        assert ctx.result.content[0].text == "hi"
+
+
 async def test_list_tools_and_call_tool() -> None:
     server = _make_server()
     async with _grpc_adapter_for(server) as grpc:

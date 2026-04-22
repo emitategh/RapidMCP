@@ -23,23 +23,67 @@ Requires: pip install livekit-agents
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
 import logging
 from typing import Any
 
 from rapidmcp.auth import ClientTLSConfig
 from rapidmcp.client import Client
+from rapidmcp.types import CallToolResult as RapidCallToolResult
 
 logger = logging.getLogger(__name__)
 
 try:
-    from livekit.agents.llm.mcp import MCPServer, MCPTool
+    from livekit.agents.llm.mcp import (
+        MCPServer,
+        MCPTool,
+        MCPToolResultContext,
+        MCPToolResultResolver,
+    )
     from livekit.agents.llm.tool_context import ToolError, function_tool
 except ImportError as e:
     raise ImportError(
         "livekit-agents is required for the LiveKit integration.\n"
         "Install it with: pip install 'livekit-agents'"
     ) from e
+
+
+def _to_mcp_call_result(res: RapidCallToolResult) -> Any:
+    """Convert rapidmcp.types.CallToolResult to mcp.types.CallToolResult so
+    that a user-supplied MCPToolResultResolver receives the same type it
+    would from MCPServerHTTP."""
+    import mcp.types as mcp_types
+
+    parts: list[Any] = []
+    for c in res.content:
+        if c.type == "text":
+            parts.append(mcp_types.TextContent(type="text", text=c.text))
+        elif c.type == "image":
+            parts.append(
+                mcp_types.ImageContent(
+                    type="image",
+                    data=base64.b64encode(c.data).decode(),
+                    mimeType=c.mime_type,
+                )
+            )
+        elif c.type == "audio":
+            parts.append(
+                mcp_types.AudioContent(
+                    type="audio",
+                    data=base64.b64encode(c.data).decode(),
+                    mimeType=c.mime_type,
+                )
+            )
+        elif c.type == "resource":
+            parts.append(
+                mcp_types.ResourceLink(
+                    type="resource_link",
+                    uri=c.uri,  # type: ignore[arg-type]
+                    name=c.uri.rsplit("/", 1)[-1] or c.uri,
+                )
+            )
+    return mcp_types.CallToolResult(content=parts, isError=res.is_error)
 
 
 class MCPServerGRPC(MCPServer):
@@ -54,6 +98,11 @@ class MCPServerGRPC(MCPServer):
         token: Optional bearer token sent as ``authorization`` metadata on every call.
         tls: Optional :class:`~rapidmcp.auth.ClientTLSConfig` for TLS/mTLS connections.
         allowed_tools: Optional allowlist of tool names. ``None`` = all tools.
+        client_session_timeout_seconds: Timeout for individual client sessions.
+        tool_result_resolver: Optional callable to transform tool results before returning
+            them to the agent. Receives an :class:`MCPToolResultContext` and returns any value.
+            Defaults to the library's built-in resolver (returns JSON-serialized text for
+            single-content results, a JSON list for multi-content).
     """
 
     def __init__(
@@ -64,8 +113,12 @@ class MCPServerGRPC(MCPServer):
         tls: ClientTLSConfig | None = None,
         allowed_tools: list[str] | None = None,
         client_session_timeout_seconds: float = 30,
+        tool_result_resolver: MCPToolResultResolver | None = None,
     ) -> None:
-        super().__init__(client_session_timeout_seconds=client_session_timeout_seconds)
+        super().__init__(
+            client_session_timeout_seconds=client_session_timeout_seconds,
+            tool_result_resolver=tool_result_resolver,
+        )
         self._address = address
         self._grpc_client = Client(address, token=token, tls=tls)
         self._allowed_tools = set(allowed_tools) if allowed_tools else None
@@ -99,7 +152,7 @@ class MCPServerGRPC(MCPServer):
                 continue
             _name, _desc = t.name, t.description
 
-            async def _call(raw_arguments: dict[str, Any], _n: str = _name) -> str:
+            async def _call(raw_arguments: dict[str, Any], _n: str = _name) -> Any:
                 tool_result = await self._grpc_client.call_tool(_n, raw_arguments)
                 if tool_result.is_error:
                     parts: list[str] = []
@@ -113,35 +166,15 @@ class MCPServerGRPC(MCPServer):
                     raise ToolError(
                         "\n".join(parts) if parts else f"Tool '{_n}' failed without a message"
                     )
-                if not tool_result.content:
-                    raise ToolError(f"Tool '{_n}' returned no content")
-                c0 = tool_result.content[0]
-                if len(tool_result.content) == 1:
-                    if c0.type == "text":
-                        return c0.text
-                    # image / audio — return base64 data with mime type
-                    import base64
-                    import json as _json
 
-                    return _json.dumps(
-                        {
-                            "type": c0.type,
-                            "mimeType": c0.mime_type,
-                            "data": base64.b64encode(c0.data).decode(),
-                        }
-                    )
-                import json as _json
-
-                return _json.dumps(
-                    [
-                        {"type": c.type, "text": c.text}
-                        if c.type == "text"
-                        else {"type": c.type, "uri": c.uri}
-                        if c.type == "resource"
-                        else {"type": c.type, "mimeType": c.mime_type}
-                        for c in tool_result.content
-                    ]
+                mcp_result = _to_mcp_call_result(tool_result)
+                ctx = MCPToolResultContext(
+                    tool_name=_n, arguments=raw_arguments, result=mcp_result
                 )
+                resolved = self._tool_result_resolver(ctx)
+                if asyncio.iscoroutine(resolved):
+                    resolved = await resolved
+                return resolved
 
             tools.append(
                 function_tool(
