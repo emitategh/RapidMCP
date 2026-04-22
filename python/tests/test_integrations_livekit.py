@@ -50,6 +50,40 @@ async def _grpc_adapter_for(server: RapidMCP, **kwargs: Any):
             adapter._connected = False
 
 
+async def test_initialize_is_concurrency_safe() -> None:
+    """Two concurrent initialize() calls must not both call Client.connect()."""
+    import asyncio
+
+    server = _make_server()
+    async with InProcessChannel(server) as chan:
+        adapter = MCPServerGRPC.__new__(MCPServerGRPC)
+        from rapidmcp.integrations.livekit import MCPServer
+        MCPServer.__init__(adapter, client_session_timeout_seconds=30)
+        adapter._address = "in-process"
+
+        # Count connect() calls via a wrapper.
+        real = chan
+        calls = 0
+        orig_connect = real.connect if hasattr(real, "connect") else None
+
+        async def counting_connect():
+            nonlocal calls
+            calls += 1
+            await asyncio.sleep(0.01)  # widen the race window
+            if orig_connect is not None:
+                return await orig_connect()
+
+        real.connect = counting_connect  # type: ignore[method-assign]
+
+        adapter._grpc_client = real
+        adapter._allowed_tools = None
+        adapter._connected = False
+
+        await asyncio.gather(adapter.initialize(), adapter.initialize())
+        assert calls == 1, f"expected one connect() call, got {calls}"
+        assert adapter.initialized is True
+
+
 async def test_list_tools_reuses_cache_until_invalidated() -> None:
     """list_tools should not re-hit the server when the cache is clean."""
     server = _make_server()
