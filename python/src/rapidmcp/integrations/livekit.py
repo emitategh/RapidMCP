@@ -22,6 +22,7 @@ Requires: pip install livekit-agents
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
 from typing import Any
@@ -69,6 +70,7 @@ class MCPServerGRPC(MCPServer):
         self._grpc_client = Client(address, token=token, tls=tls)
         self._allowed_tools = set(allowed_tools) if allowed_tools else None
         self._connected = False
+        self._init_lock = asyncio.Lock()
 
     @property
     def initialized(self) -> bool:
@@ -77,9 +79,14 @@ class MCPServerGRPC(MCPServer):
     async def initialize(self) -> None:
         if self._connected:
             return
-        await self._grpc_client.connect()
-        self._connected = True
-        logger.info("MCPServerGRPC connected to %s", self._address)
+        if not hasattr(self, "_init_lock"):
+            self._init_lock = asyncio.Lock()
+        async with self._init_lock:
+            if self._connected:
+                return
+            await self._grpc_client.connect()
+            self._connected = True
+            logger.info("MCPServerGRPC connected to %s", self._address)
 
     async def list_tools(self) -> list[MCPTool]:
         if not self._cache_dirty and self._lk_tools is not None:
