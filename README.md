@@ -93,10 +93,15 @@ async with RapidMCPClient({
 
 ```python
 from rapidmcp.integrations.livekit import MCPServerGRPC
-from livekit.agents import AgentSession
+from livekit.agents import AgentSession, mcp
 
 session = AgentSession(
-    mcp_servers=[MCPServerGRPC(address="mcp-server:50051")],
+    tools=[
+        mcp.MCPToolset(
+            id="grpc-tools",
+            mcp_server=MCPServerGRPC(address="mcp-server:50051"),
+        ),
+    ],
 )
 ```
 

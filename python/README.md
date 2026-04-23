@@ -106,11 +106,16 @@ pip install 'rapidmcp[langchain]'
 ### LiveKit integration
 
 ```python
-from livekit.agents.llm.mcp import MCPToolset
 from rapidmcp.integrations.livekit import MCPServerGRPC
+from livekit.agents import AgentSession, mcp
 
 session = AgentSession(
-    tools=[MCPToolset(id="tools", mcp_server=MCPServerGRPC(address="localhost:50051"))],
+    tools=[
+        mcp.MCPToolset(
+            id="grpc-tools",
+            mcp_server=MCPServerGRPC(address="mcp-server:50051"),
+        ),
+    ],
 )
 ```
 
