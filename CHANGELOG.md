@@ -9,6 +9,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Python (`rapidmcp`)
 
+### [0.4.0] - 2026-04-20
+
+### Added
+- **`RapidMCPClient` multi-server LangChain adapter** — mirrors the `MultiServerMCPClient` shape from `langchain-mcp-adapters`. One client fans out across any number of RapidMCP gRPC servers and aggregates tools, prompts, and resources:
+  ```python
+  from rapidmcp.integrations.langchain import RapidMCPClient
+  async with RapidMCPClient({
+      "docs": {"address": "docs:50051"},
+      "sql":  {"address": "sql:50051", "token": "...", "allowed_tools": ["query"]},
+  }) as rc:
+      tools = await rc.get_tools()
+      prompt = await rc.get_prompt("docs", "summarise", arguments={"topic": "grpc"})
+      blobs = await rc.get_resources("docs", uris=["file:///readme.md"])
+  ```
+- **LiveKit integration parity with `MCPServerHTTP`** (`livekit-agents` 1.5.2):
+  - `tool_result_resolver` kwarg on `MCPServerGRPC.__init__` — forwarded to the base class; custom resolvers receive an `MCPToolResultContext` with a real `mcp.types.CallToolResult`
+  - New `_to_mcp_call_result` helper converts `rapidmcp.types.CallToolResult` → `mcp.types.CallToolResult`, covering `TextContent`, `ImageContent`, `AudioContent`, `EmbeddedResource` (blob + text), and `ResourceLink`
+  - Unknown content types surface as a `TextContent` placeholder and a `WARNING` log — never silently dropped
+- 15 functional tests for the LiveKit adapter (`tests/test_integrations_livekit.py`): cache-hit, init race, error stringification, custom resolver, multi-content, embedded resources (blob + text), unknown content type, empty-content resolver, `allowed_tools` filter, `client_streams()` contract, pre-init/post-aclose guards
+- `livekit-agents[mcp]>=0.8` now required by the `livekit` extra; also added to the `dev` extra so the test suite runs in CI
+
+### Changed
+- **BREAKING**: The legacy `MCPToolkit` LangChain adapter has been removed in favor of `RapidMCPClient`. Migration:
+  ```python
+  # before
+  toolkit = MCPToolkit(address="localhost:50051")
+  tools = await toolkit.get_tools()
+  # after
+  async with RapidMCPClient({"my_server": {"address": "localhost:50051"}}) as rc:
+      tools = await rc.get_tools()
+  ```
+- `MCPServerGRPC.list_tools` now honors `_cache_dirty` / `_lk_tools` so `MCPToolset.invalidate_cache()` actually refreshes
+- `MCPServerGRPC.initialize()` is concurrency-safe (guarded by `asyncio.Lock` with double-checked `_connected`)
+- `MCPServerGRPC.aclose()` is idempotent (short-circuits when already disconnected)
+- `client_streams()` raises `NotImplementedError` synchronously (was deferred to `__aenter__` via `@asynccontextmanager`)
+
+### Fixed
+- `MCPServerGRPC` error messages now surface non-text content as `[image: mime, N bytes]` / `[audio: ...]` / `[resource: uri]` placeholders — previously silently dropped
+- `MCPServerGRPC.list_tools` raises `RuntimeError("isn't initialized")` when called before `initialize()`, matching the base-class contract
+- `MCPServerGRPC` tool invocations raise `ToolError("internal service is unavailable …")` when `_connected` is `False` (post-`aclose`), matching the base-class contract
+- `list_tools` info log now filters names by `allowed_tools` so the reported count and names agree
+
 ### [0.3.2] - 2026-04-14
 
 ### Changed
@@ -136,6 +178,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 <!-- Python links -->
+[0.4.0]: https://github.com/emitategh/RapidMCP/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/emitategh/RapidMCP/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/emitategh/RapidMCP/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/emitategh/RapidMCP/compare/v0.2.0...v0.3.0
