@@ -290,6 +290,7 @@ async def test_embedded_resource_with_blob_is_forwarded() -> None:
         return "ok"
 
     async with _grpc_adapter_for(server, tool_result_resolver=resolver) as grpc:
+
         async def _fake_call(name, arguments):
             return mocked_result
 
@@ -335,6 +336,7 @@ async def test_embedded_resource_with_text_is_forwarded() -> None:
         return "ok"
 
     async with _grpc_adapter_for(server, tool_result_resolver=resolver) as grpc:
+
         async def _fake_call(name, arguments):
             return mocked_result
 
@@ -374,6 +376,7 @@ async def test_unknown_content_type_emits_text_placeholder(caplog) -> None:
         return "ok"
 
     async with _grpc_adapter_for(server, tool_result_resolver=resolver) as grpc:
+
         async def _fake_call(name, arguments):
             return mocked_result
 
@@ -388,3 +391,45 @@ async def test_unknown_content_type_emits_text_placeholder(caplog) -> None:
     assert isinstance(part, mcp_types.TextContent)
     assert "unsupported content type: some-future-type" in part.text
     assert any("unknown content type" in r.message for r in caplog.records)
+
+
+async def test_default_resolver_raises_on_empty_content() -> None:
+    """When a tool returns success with empty content, the library's default
+    resolver raises ToolError (matches base-class semantics)."""
+    from livekit.agents.llm.tool_context import ToolError as LKToolError
+
+    from rapidmcp.types import CallToolResult
+
+    mocked_result = CallToolResult(is_error=False, content=[])
+
+    server = _make_server()
+    async with _grpc_adapter_for(server) as grpc:
+
+        async def _fake_call(name, arguments):
+            return mocked_result
+
+        grpc._grpc_client.call_tool = _fake_call  # type: ignore[method-assign]
+
+        tools = await grpc.list_tools()
+        echo_tool = next(t for t in tools if t.info.name == "echo")
+
+        with pytest.raises(LKToolError, match="without producing a result"):
+            await echo_tool(raw_arguments={"text": "x"})
+
+
+async def test_allowed_tools_filters_list_tools() -> None:
+    """Only tools in the allowed_tools set should be returned by list_tools."""
+    server = _make_server()
+    async with _grpc_adapter_for(server, allowed_tools={"add"}) as grpc:
+        tools = await grpc.list_tools()
+        names = {t.info.name for t in tools}
+        assert names == {"add"}
+
+
+async def test_allowed_tools_none_returns_all() -> None:
+    """allowed_tools=None should return every tool the server exposes."""
+    server = _make_server()
+    async with _grpc_adapter_for(server, allowed_tools=None) as grpc:
+        tools = await grpc.list_tools()
+        names = {t.info.name for t in tools}
+        assert names == {"add", "echo"}

@@ -251,9 +251,5 @@ class MCPServerGRPC(MCPServer):
         raise NotImplementedError("MCPServerGRPC uses gRPC transport, not client_streams")
 
     def __repr__(self) -> str:
-        allowed = (
-            f", allowed_tools={sorted(self._allowed_tools)}"
-            if self._allowed_tools
-            else ""
-        )
+        allowed = f", allowed_tools={sorted(self._allowed_tools)}" if self._allowed_tools else ""
         return f"MCPServerGRPC(address={self._address!r}{allowed})"
