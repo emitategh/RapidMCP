@@ -257,3 +257,134 @@ async def test_tool_call_raises_tool_error_after_aclose() -> None:
 
         with pytest.raises(LKToolError, match="internal service is unavailable"):
             await echo_tool(raw_arguments={"text": "hi"})
+
+
+async def test_embedded_resource_with_blob_is_forwarded() -> None:
+    """A resource with binary data should become an EmbeddedResource
+    carrying BlobResourceContents (base64 blob), not a bare ResourceLink."""
+    import base64 as _b64
+
+    import mcp.types as mcp_types
+    from livekit.agents.llm.mcp import MCPToolResultContext
+
+    from rapidmcp.types import CallToolResult, ContentItem
+
+    blob_bytes = b"\x00\x01\x02\xff"
+    mocked_result = CallToolResult(
+        is_error=False,
+        content=[
+            ContentItem(
+                type="resource",
+                uri="file:///tmp/embedded.bin",
+                data=blob_bytes,
+                mime_type="application/octet-stream",
+            ),
+        ],
+    )
+
+    server = _make_server()
+    seen: list[MCPToolResultContext] = []
+
+    def resolver(ctx: MCPToolResultContext) -> str:
+        seen.append(ctx)
+        return "ok"
+
+    async with _grpc_adapter_for(server, tool_result_resolver=resolver) as grpc:
+        async def _fake_call(name, arguments):
+            return mocked_result
+
+        grpc._grpc_client.call_tool = _fake_call  # type: ignore[method-assign]
+
+        tools = await grpc.list_tools()
+        echo_tool = next(t for t in tools if t.info.name == "echo")
+        await echo_tool(raw_arguments={"text": "x"})
+
+        assert len(seen) == 1
+        (part,) = seen[0].result.content
+        assert isinstance(part, mcp_types.EmbeddedResource)
+        assert isinstance(part.resource, mcp_types.BlobResourceContents)
+        assert part.resource.blob == _b64.b64encode(blob_bytes).decode()
+        assert part.resource.mimeType == "application/octet-stream"
+
+
+async def test_embedded_resource_with_text_is_forwarded() -> None:
+    """A resource with text content should become an EmbeddedResource
+    carrying TextResourceContents."""
+    import mcp.types as mcp_types
+    from livekit.agents.llm.mcp import MCPToolResultContext
+
+    from rapidmcp.types import CallToolResult, ContentItem
+
+    mocked_result = CallToolResult(
+        is_error=False,
+        content=[
+            ContentItem(
+                type="resource",
+                uri="file:///tmp/notes.txt",
+                text="hello there",
+                mime_type="text/plain",
+            ),
+        ],
+    )
+
+    server = _make_server()
+    seen: list[MCPToolResultContext] = []
+
+    def resolver(ctx: MCPToolResultContext) -> str:
+        seen.append(ctx)
+        return "ok"
+
+    async with _grpc_adapter_for(server, tool_result_resolver=resolver) as grpc:
+        async def _fake_call(name, arguments):
+            return mocked_result
+
+        grpc._grpc_client.call_tool = _fake_call  # type: ignore[method-assign]
+
+        tools = await grpc.list_tools()
+        echo_tool = next(t for t in tools if t.info.name == "echo")
+        await echo_tool(raw_arguments={"text": "x"})
+
+        (part,) = seen[0].result.content
+        assert isinstance(part, mcp_types.EmbeddedResource)
+        assert isinstance(part.resource, mcp_types.TextResourceContents)
+        assert part.resource.text == "hello there"
+        assert part.resource.mimeType == "text/plain"
+
+
+async def test_unknown_content_type_emits_text_placeholder(caplog) -> None:
+    """Unknown rapidmcp content types must surface as a text placeholder and
+    a warning log — never be silently dropped."""
+    import logging
+
+    import mcp.types as mcp_types
+    from livekit.agents.llm.mcp import MCPToolResultContext
+
+    from rapidmcp.types import CallToolResult, ContentItem
+
+    mocked_result = CallToolResult(
+        is_error=False,
+        content=[ContentItem(type="some-future-type", text="ignored")],
+    )
+
+    server = _make_server()
+    seen: list[MCPToolResultContext] = []
+
+    def resolver(ctx: MCPToolResultContext) -> str:
+        seen.append(ctx)
+        return "ok"
+
+    async with _grpc_adapter_for(server, tool_result_resolver=resolver) as grpc:
+        async def _fake_call(name, arguments):
+            return mocked_result
+
+        grpc._grpc_client.call_tool = _fake_call  # type: ignore[method-assign]
+
+        with caplog.at_level(logging.WARNING, logger="rapidmcp.integrations.livekit"):
+            tools = await grpc.list_tools()
+            echo_tool = next(t for t in tools if t.info.name == "echo")
+            await echo_tool(raw_arguments={"text": "x"})
+
+    (part,) = seen[0].result.content
+    assert isinstance(part, mcp_types.TextContent)
+    assert "unsupported content type: some-future-type" in part.text
+    assert any("unknown content type" in r.message for r in caplog.records)
