@@ -74,11 +74,45 @@ def _to_mcp_call_result(res: RapidCallToolResult) -> mcp_types.CallToolResult:
                 )
             )
         elif c.type == "resource":
+            if c.data:
+                parts.append(
+                    mcp_types.EmbeddedResource(
+                        type="resource",
+                        resource=mcp_types.BlobResourceContents(
+                            uri=c.uri,  # type: ignore[arg-type]
+                            blob=base64.b64encode(c.data).decode(),
+                            mimeType=c.mime_type or None,
+                        ),
+                    )
+                )
+            elif c.text:
+                parts.append(
+                    mcp_types.EmbeddedResource(
+                        type="resource",
+                        resource=mcp_types.TextResourceContents(
+                            uri=c.uri,  # type: ignore[arg-type]
+                            text=c.text,
+                            mimeType=c.mime_type or None,
+                        ),
+                    )
+                )
+            else:
+                parts.append(
+                    mcp_types.ResourceLink(
+                        type="resource_link",
+                        uri=c.uri,  # type: ignore[arg-type]
+                        name=c.uri.rsplit("/", 1)[-1] or c.uri,
+                    )
+                )
+        else:
+            logger.warning(
+                "MCPServerGRPC: unknown content type %r — emitting text placeholder",
+                c.type,
+            )
             parts.append(
-                mcp_types.ResourceLink(
-                    type="resource_link",
-                    uri=c.uri,  # type: ignore[arg-type]
-                    name=c.uri.rsplit("/", 1)[-1] or c.uri,
+                mcp_types.TextContent(
+                    type="text",
+                    text=f"[unsupported content type: {c.type}]",
                 )
             )
     return mcp_types.CallToolResult(content=parts, isError=res.is_error)
