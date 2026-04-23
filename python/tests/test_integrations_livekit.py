@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 from typing import Any
 
@@ -46,6 +47,7 @@ async def _grpc_adapter_for(server: RapidMCP, **kwargs: Any):
         adapter._grpc_client = chan
         adapter._allowed_tools = kwargs.pop("allowed_tools", None)
         adapter._connected = True
+        adapter._init_lock = asyncio.Lock()
         try:
             yield adapter
         finally:
@@ -54,8 +56,6 @@ async def _grpc_adapter_for(server: RapidMCP, **kwargs: Any):
 
 async def test_initialize_is_concurrency_safe() -> None:
     """Two concurrent initialize() calls must not both call Client.connect()."""
-    import asyncio
-
     server = _make_server()
     async with InProcessChannel(server) as chan:
         adapter = MCPServerGRPC.__new__(MCPServerGRPC)
@@ -63,6 +63,7 @@ async def test_initialize_is_concurrency_safe() -> None:
 
         MCPServer.__init__(adapter, client_session_timeout_seconds=30)
         adapter._address = "in-process"
+        adapter._init_lock = asyncio.Lock()
 
         # Count connect() calls via a wrapper.
         real = chan

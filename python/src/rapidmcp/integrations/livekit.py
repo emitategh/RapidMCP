@@ -131,8 +131,6 @@ class MCPServerGRPC(MCPServer):
     async def initialize(self) -> None:
         if self._connected:
             return
-        if not hasattr(self, "_init_lock"):
-            self._init_lock = asyncio.Lock()
         async with self._init_lock:
             if self._connected:
                 return
