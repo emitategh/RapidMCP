@@ -226,3 +226,40 @@ async def test_list_tools_and_call_tool() -> None:
         add_tool = next(t for t in tools if t.info.name == "add")
         result = await add_tool(raw_arguments={"a": 17, "b": 25})
         assert "42" in str(result)
+
+
+async def test_list_tools_raises_when_not_initialized() -> None:
+    """Calling list_tools before initialize() must raise a clean RuntimeError."""
+    server = _make_server()
+    async with InProcessChannel(server) as chan:
+        adapter = MCPServerGRPC.__new__(MCPServerGRPC)
+        from rapidmcp.integrations.livekit import MCPServer
+
+        MCPServer.__init__(adapter, client_session_timeout_seconds=30)
+        adapter._address = "in-process"
+        adapter._grpc_client = chan
+        adapter._allowed_tools = None
+        adapter._connected = False  # not initialized
+        adapter._init_lock = asyncio.Lock()
+
+        with pytest.raises(RuntimeError, match="isn't initialized"):
+            await adapter.list_tools()
+
+
+async def test_tool_call_raises_tool_error_after_aclose() -> None:
+    """Calling a cached tool after aclose() must raise ToolError (not a raw
+    gRPC error) — matches the base class contract."""
+    from livekit.agents.llm.tool_context import ToolError as LKToolError
+
+    server = _make_server()
+    async with _grpc_adapter_for(server) as grpc:
+        tools = await grpc.list_tools()
+        echo_tool = next(t for t in tools if t.info.name == "echo")
+
+        # Simulate aclose by flipping _connected to False. The fixture's
+        # channel stays open, so a gRPC error isn't possible — we're
+        # isolating the guard behavior from transport.
+        grpc._connected = False
+
+        with pytest.raises(LKToolError, match="internal service is unavailable"):
+            await echo_tool(raw_arguments={"text": "hi"})

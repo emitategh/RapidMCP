@@ -138,6 +138,8 @@ class MCPServerGRPC(MCPServer):
             logger.info("MCPServerGRPC connected to %s", self._address)
 
     async def list_tools(self) -> list[MCPTool]:
+        if not self._connected:
+            raise RuntimeError("MCPServerGRPC isn't initialized")
         if not self._cache_dirty and self._lk_tools is not None:
             return self._lk_tools
 
@@ -149,6 +151,11 @@ class MCPServerGRPC(MCPServer):
             _name, _desc = t.name, t.description
 
             async def _call(raw_arguments: dict[str, Any], _n: str = _name) -> Any:
+                if not self._connected:
+                    raise ToolError(
+                        "Tool invocation failed: internal service is unavailable. "
+                        "Please check that the MCPServer is still running."
+                    )
                 tool_result = await self._grpc_client.call_tool(_n, raw_arguments)
                 if tool_result.is_error:
                     parts: list[str] = []
