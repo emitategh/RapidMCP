@@ -27,4 +27,27 @@ describe("matchUriTemplate", () => {
   it("returns null when URI doesn't match template", () => {
     expect(matchUriTemplate("res://items/42/extra", "res://items/{id}")).toBeNull();
   });
+
+  it("decodes percent-escapes in a variable", () => {
+    expect(matchUriTemplate("res://files/my%20file.txt", "res://files/{name}")).toEqual({
+      name: "my file.txt",
+    });
+  });
+
+  it("does not let an encoded slash smuggle extra segments into a single variable", () => {
+    expect(matchUriTemplate("res://files/..%2F..%2Fsecret", "res://files/{name}")).toBeNull();
+  });
+
+  it("allows an encoded slash in a wildcard variable", () => {
+    expect(matchUriTemplate("res://files/a%2Fb.txt", "res://files/{path*}")).toEqual({
+      path: "a/b.txt",
+    });
+  });
+
+  it("extracts query parameters declared in the template", () => {
+    expect(matchUriTemplate("res://search?q=cat&limit=5&other=x", "res://search{?q,limit}")).toEqual({
+      q: "cat",
+      limit: "5",
+    });
+  });
 });
