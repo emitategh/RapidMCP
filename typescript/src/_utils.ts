@@ -35,6 +35,16 @@ export function toContentItems(
   return [{ type: "text", text: String(result), data: new Uint8Array(), mimeType: "", uri: "" }];
 }
 
+/**
+ * Insert *prefix* as the first path segment after the scheme:
+ * "res://greeting" -> "res://users/greeting"; "plain/path" -> "users/plain/path".
+ */
+export function prefixResourceUri(uri: string, prefix: string): string {
+  const at = uri.indexOf("://");
+  if (at === -1) return `${prefix}/${uri}`;
+  return `${uri.slice(0, at)}://${prefix}/${uri.slice(at + 3)}`;
+}
+
 export function paginate<T>(items: T[], cursorStr: string, pageSize: number | undefined): [T[], string] {
   if (pageSize === undefined) {
     return [items, ""];

@@ -16,6 +16,13 @@ import { ResourceManager } from "./resources/resource-manager.js";
 import { PromptManager } from "./prompts/prompt-manager.js";
 import { McpServicer } from "./servicer.js";
 import { AsyncQueue } from "./session.js";
+import {
+  authMiddleware,
+  buildServerCredentials,
+  type ServerTlsConfig,
+  type TokenVerifier,
+} from "./auth.js";
+import { prefixResourceUri } from "./_utils.js";
 import type { Middleware } from "./middleware.js";
 import type { ToolConfig } from "./tools/tool.js";
 import type { ResourceConfig, ResourceTemplateConfig } from "./resources/resource.js";
@@ -25,6 +32,10 @@ export interface RapidMCPOptions {
   name: string;
   version?: string;
   pageSize?: number;
+  /** Verify the bearer token of every incoming session; reject when it returns false. */
+  auth?: TokenVerifier;
+  /** Serve over TLS (and mTLS when `ca` is set). */
+  tls?: ServerTlsConfig;
 }
 
 export interface ListenOptions {
@@ -36,6 +47,8 @@ export class RapidMCP {
   private _name: string;
   private _version: string;
   private _pageSize: number | undefined;
+  private _auth: TokenVerifier | undefined;
+  private _tls: ServerTlsConfig | undefined;
 
   private _toolManager = new ToolManager();
   private _resourceManager = new ResourceManager();
@@ -51,6 +64,8 @@ export class RapidMCP {
     this._name = opts.name;
     this._version = opts.version ?? "0.1.0";
     this._pageSize = opts.pageSize;
+    this._auth = opts.auth;
+    this._tls = opts.tls;
   }
 
   // ── Registration ──────────────────────────────────────────
@@ -73,6 +88,55 @@ export class RapidMCP {
 
   use(middleware: Middleware): void {
     this._middlewares.push(middleware);
+  }
+
+  /**
+   * Merge everything registered on *sub* into this server under *prefix*.
+   *
+   * Tools and prompts become `{prefix}_{name}`; resources and resource
+   * templates get *prefix* as the first path segment (`res://x` ->
+   * `res://{prefix}/x`). *sub* only donates its registrations — its
+   * middleware and handlers are not adopted; this server's middleware wraps
+   * the mounted tools.
+   *
+   * Throws on any name/URI collision, in which case nothing is registered.
+   */
+  mount(sub: RapidMCP, opts: { prefix: string }): void {
+    const { prefix } = opts;
+    const tools = sub._toolManager
+      .listTools()
+      .map((t) => ({ ...t, name: `${prefix}_${t.name}` }));
+    const prompts = sub._promptManager
+      .listPrompts()
+      .map((p) => ({ ...p, name: `${prefix}_${p.name}` }));
+    const resources = sub._resourceManager
+      .listResources()
+      .map((r) => ({ ...r, uri: prefixResourceUri(r.uri, prefix) }));
+    const templates = sub._resourceManager
+      .listResourceTemplates()
+      .map((t) => ({ ...t, uriTemplate: prefixResourceUri(t.uriTemplate, prefix) }));
+
+    const collision = (kind: string, key: string) =>
+      new Error(`mount(prefix=${JSON.stringify(prefix)}): ${kind} collision '${key}'`);
+    for (const t of tools) {
+      if (this._toolManager.getTool(t.name)) throw collision("tool", t.name);
+    }
+    for (const p of prompts) {
+      if (this._promptManager.has(p.name)) throw collision("prompt", p.name);
+    }
+    for (const r of resources) {
+      if (this._resourceManager.hasResource(r.uri)) throw collision("resource", r.uri);
+    }
+    for (const t of templates) {
+      if (this._resourceManager.hasResourceTemplate(t.uriTemplate)) {
+        throw collision("resource template", t.uriTemplate);
+      }
+    }
+
+    for (const t of tools) this._toolManager.register(t);
+    for (const p of prompts) this._promptManager.register(p);
+    for (const r of resources) this._resourceManager.registerResource(r);
+    for (const t of templates) this._resourceManager.registerResourceTemplate(t);
   }
 
   /** Run *handler* with the uri whenever a client subscribes to a resource. */
@@ -110,10 +174,12 @@ export class RapidMCP {
     });
 
     this._server = createServer();
+    const registrar = this._auth ? this._server.with(authMiddleware(this._auth)) : this._server;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- DeepPartial union type mismatch
-    this._server.add(McpDefinition, servicer as any);
+    registrar.add(McpDefinition, servicer as any);
     const listenAddr = `${host}:${port}`;
-    const actualPort = await this._server.listen(listenAddr);
+    const credentials = this._tls ? buildServerCredentials(this._tls) : undefined;
+    const actualPort = await this._server.listen(listenAddr, credentials);
     return actualPort;
   }
 

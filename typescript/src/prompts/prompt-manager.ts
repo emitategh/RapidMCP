@@ -13,6 +13,15 @@ export class PromptManager {
     });
   }
 
+  /** Add an already-built registration (used when mounting another server). */
+  register(prompt: RegisteredPrompt): void {
+    this._prompts.set(prompt.name, prompt);
+  }
+
+  has(name: string): boolean {
+    return this._prompts.has(name);
+  }
+
   listPrompts(): RegisteredPrompt[] {
     return [...this._prompts.values()];
   }

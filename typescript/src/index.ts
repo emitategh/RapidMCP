@@ -17,7 +17,12 @@ export {
   type ServerInfo,
   type ServerCapabilities,
 } from "./types.js";
-export { type ClientOptions, type TlsConfig } from "./auth.js";
+export {
+  type ClientOptions,
+  type TlsConfig,
+  type ServerTlsConfig,
+  type TokenVerifier,
+} from "./auth.js";
 
 // Server exports
 export { RapidMCP, type RapidMCPOptions, type ListenOptions } from "./server.js";

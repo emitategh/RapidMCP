@@ -37,6 +37,11 @@ export class ToolManager {
     });
   }
 
+  /** Add an already-built registration (used when mounting another server). */
+  register(tool: RegisteredTool): void {
+    this._tools.set(tool.name, tool);
+  }
+
   listTools(): RegisteredTool[] {
     return [...this._tools.values()];
   }

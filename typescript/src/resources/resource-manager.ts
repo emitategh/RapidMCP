@@ -52,6 +52,23 @@ export class ResourceManager {
     });
   }
 
+  /** Add already-built registrations (used when mounting another server). */
+  registerResource(resource: RegisteredResource): void {
+    this._resources.set(resource.uri, resource);
+  }
+
+  registerResourceTemplate(template: RegisteredResourceTemplate): void {
+    this._templates.set(template.uriTemplate, template);
+  }
+
+  hasResource(uri: string): boolean {
+    return this._resources.has(uri);
+  }
+
+  hasResourceTemplate(uriTemplate: string): boolean {
+    return this._templates.has(uriTemplate);
+  }
+
   listResources(): RegisteredResource[] {
     return [...this._resources.values()];
   }
