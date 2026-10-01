@@ -87,6 +87,13 @@ class Context:
                                 mcp_pb2.ContentItem(
                                     type=item.get("type", "text"),
                                     text=item.get("text", ""),
+                                    data=item.get("data", b""),
+                                    mime_type=item.get("mime_type", ""),
+                                    uri=item.get("uri", ""),
+                                    tool_use_id=item.get("tool_use_id", ""),
+                                    tool_name=item.get("tool_name", ""),
+                                    tool_input=item.get("tool_input", ""),
+                                    tool_result_id=item.get("tool_result_id", ""),
                                 )
                             )
                 else:

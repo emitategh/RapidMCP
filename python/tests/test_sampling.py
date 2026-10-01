@@ -309,3 +309,48 @@ async def test_tool_use_content_in_sampling_response():
 
     assert not result.is_error
     assert result.content[0].text == "tool_use:do_thing:tu_123"
+
+
+async def test_sample_dict_content_keeps_tool_and_binary_fields():
+    """Dict content items must carry tool_use / tool_result / binary fields, not just text."""
+    import asyncio
+
+    from rapidmcp.session import PendingRequests
+
+    queue: asyncio.Queue = asyncio.Queue()
+    ctx = Context(
+        client_capabilities=mcp_pb2.ClientCapabilities(sampling=True),
+        pending=PendingRequests(),
+        write_queue=queue,
+    )
+    task = asyncio.create_task(
+        ctx.sample(
+            messages=[
+                {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "tool_use_id": "tu_1",
+                            "tool_name": "lookup",
+                            "tool_input": '{"q": "x"}',
+                        },
+                        {"type": "tool_result", "tool_result_id": "tu_1", "text": "42"},
+                        {"type": "image", "data": b"\x89PNG", "mime_type": "image/png"},
+                    ],
+                }
+            ],
+            max_tokens=10,
+        )
+    )
+    env: mcp_pb2.ServerEnvelope = await asyncio.wait_for(queue.get(), timeout=1)
+    task.cancel()
+
+    tool_use, tool_result, image = env.sampling.messages[0].content
+    assert (tool_use.tool_use_id, tool_use.tool_name, tool_use.tool_input) == (
+        "tu_1",
+        "lookup",
+        '{"q": "x"}',
+    )
+    assert (tool_result.tool_result_id, tool_result.text) == ("tu_1", "42")
+    assert (image.data, image.mime_type) == (b"\x89PNG", "image/png")
