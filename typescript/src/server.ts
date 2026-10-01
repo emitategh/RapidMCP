@@ -15,6 +15,8 @@ import { ToolManager } from "./tools/tool-manager.js";
 import { ResourceManager } from "./resources/resource-manager.js";
 import { PromptManager } from "./prompts/prompt-manager.js";
 import { McpServicer } from "./servicer.js";
+import { McpDefinition as McpV2Definition } from "../generated/mcp_v2.js";
+import { McpV2Servicer } from "./v2/servicer.js";
 import { AsyncQueue } from "./session.js";
 import {
   authMiddleware,
@@ -176,10 +178,21 @@ export class RapidMCP {
       },
     });
 
+    const v2Servicer = new McpV2Servicer({
+      name: this._name,
+      version: this._version,
+      toolManager: this._toolManager,
+      resourceManager: this._resourceManager,
+      promptManager: this._promptManager,
+      pageSize: this._pageSize,
+    });
+
     this._server = createServer();
     const registrar = this._auth ? this._server.with(authMiddleware(this._auth)) : this._server;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- DeepPartial union type mismatch
     registrar.add(McpDefinition, servicer as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- DeepPartial union type mismatch
+    registrar.add(McpV2Definition, v2Servicer as any);
     const listenAddr = `${host}:${port}`;
     const credentials = this._tls ? buildServerCredentials(this._tls) : undefined;
     const actualPort = await this._server.listen(listenAddr, credentials);
