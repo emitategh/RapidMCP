@@ -100,7 +100,11 @@ class Client:
         self._write_queue: asyncio.Queue[mcp_pb2.ClientEnvelope] = asyncio.Queue()
         self._stream = stub.Session(self._outbound_iter(), metadata=self._metadata)
         self._reader_task = asyncio.create_task(self._reader_loop())
-        await self._initialize()
+        try:
+            await self._initialize()
+        except BaseException:
+            await self.close()  # don't leave the channel and reader task behind
+            raise
         logger.debug(
             "connected to %s  server=%s %s",
             self._target,
@@ -399,9 +403,11 @@ class Client:
                 await self._reader_task
             except asyncio.CancelledError:
                 pass
+            self._reader_task = None
         self._pending.cancel_all()
         if self._channel:
             await self._channel.close()
+            self._channel = None
         self._ref_count = 0
         logger.debug("closed connection to %s", self._target)
 
@@ -416,6 +422,7 @@ class Client:
         return self
 
     async def __aexit__(self, *exc):
-        self._ref_count -= 1
+        # close() may already have reset the count from inside the block.
+        self._ref_count = max(0, self._ref_count - 1)
         if self._ref_count == 0:
             await self.close()
