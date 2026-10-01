@@ -8,10 +8,35 @@ interface ClientCapabilities {
   roots: boolean;
 }
 
+export interface SamplingContentInput {
+  type: string;
+  text?: string;
+  data?: Uint8Array;
+  mimeType?: string;
+  uri?: string;
+  /** tool_use fields */
+  toolUseId?: string;
+  toolName?: string;
+  /** JSON-serialised input object */
+  toolInput?: string;
+  /** tool_result field — matches the toolUseId it answers */
+  toolResultId?: string;
+}
+
 export interface SamplingRequestInput {
-  messages: Array<{ role: string; content: Array<{ type: string; text?: string }> }>;
+  messages: Array<{ role: string; content: SamplingContentInput[] }>;
   maxTokens: number;
   systemPrompt?: string;
+  /** Tools the model may call; inputSchema is a JSON Schema string. */
+  tools?: Array<{ name: string; description?: string; inputSchema?: string }>;
+  /** "auto" | "required" | "none" */
+  toolChoice?: string;
+  modelPreferences?: {
+    hints?: string[];
+    costPriority?: number;
+    speedPriority?: number;
+    intelligencePriority?: number;
+  };
 }
 
 const REQUEST_TIMEOUT = 30_000;
@@ -86,15 +111,16 @@ export class Context {
       content: m.content.map((c) => ({
         type: c.type,
         text: c.text ?? "",
-        data: new Uint8Array(),
-        mimeType: "",
-        uri: "",
-        toolUseId: "",
-        toolName: "",
-        toolInput: "",
-        toolResultId: "",
+        data: c.data ?? new Uint8Array(),
+        mimeType: c.mimeType ?? "",
+        uri: c.uri ?? "",
+        toolUseId: c.toolUseId ?? "",
+        toolName: c.toolName ?? "",
+        toolInput: c.toolInput ?? "",
+        toolResultId: c.toolResultId ?? "",
       })),
     }));
+    const prefs = request.modelPreferences;
 
     this._queue.enqueue({
       requestId: rid,
@@ -104,8 +130,18 @@ export class Context {
           messages,
           systemPrompt: request.systemPrompt ?? "",
           maxTokens: request.maxTokens,
-          tools: [],
-          toolChoice: "",
+          tools: (request.tools ?? []).map((t) => ({
+            name: t.name,
+            description: t.description ?? "",
+            inputSchema: t.inputSchema ?? "",
+          })),
+          toolChoice: request.toolChoice ?? "",
+          modelPreferences: prefs && {
+            hints: (prefs.hints ?? []).map((name) => ({ name })),
+            costPriority: prefs.costPriority ?? 0,
+            speedPriority: prefs.speedPriority ?? 0,
+            intelligencePriority: prefs.intelligencePriority ?? 0,
+          },
         },
       },
     });
@@ -119,6 +155,33 @@ export class Context {
     });
 
     return Promise.race([future, timeout]);
+  }
+
+  /** Ask the client for its registered root URIs. */
+  async listRoots(): Promise<Array<{ uri: string; name: string }>> {
+    if (!this._capabilities.roots) {
+      throw new McpError(400, "Client does not support roots");
+    }
+    const rid = this._pending.nextId();
+    const future = this._pending.create(rid);
+
+    this._queue.enqueue({
+      requestId: rid,
+      message: { $case: "rootsRequest" as const, rootsRequest: {} },
+    });
+
+    const timeout = new Promise<never>((_, reject) => {
+      const timer = setTimeout(
+        () => reject(new McpError(408, "Roots request timed out")),
+        REQUEST_TIMEOUT,
+      );
+      if (typeof timer === "object" && "unref" in timer) (timer as NodeJS.Timeout).unref();
+    });
+
+    const reply = (await Promise.race([future, timeout])) as {
+      roots: Array<{ uri: string; name: string }>;
+    };
+    return reply.roots;
   }
 
   async elicit(

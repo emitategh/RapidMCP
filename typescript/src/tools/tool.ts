@@ -12,6 +12,8 @@ export interface ToolConfig<T = any> {
   name: string;
   description?: string;
   parameters?: ZodType<T>;
+  /** Shape of the structured result: a zod schema or a plain JSON Schema object. */
+  outputSchema?: ZodType | Record<string, unknown>;
   annotations?: ToolAnnotationsConfig;
   execute: (args: T, ctx: any) => Promise<unknown>;
 }

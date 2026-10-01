@@ -41,6 +41,8 @@ export class RapidMCP {
   private _resourceManager = new ResourceManager();
   private _promptManager = new PromptManager();
   private _middlewares: Middleware[] = [];
+  private _subscribeHandlers: Array<(uri: string) => void | Promise<void>> = [];
+  private _rootsListChangedHandlers: Array<() => void | Promise<void>> = [];
 
   private _server: Server | null = null;
   private _sessions = new Set<AsyncQueue<DeepPartial<ServerEnvelope> | null>>();
@@ -73,6 +75,16 @@ export class RapidMCP {
     this._middlewares.push(middleware);
   }
 
+  /** Run *handler* with the uri whenever a client subscribes to a resource. */
+  onResourceSubscribe(handler: (uri: string) => void | Promise<void>): void {
+    this._subscribeHandlers.push(handler);
+  }
+
+  /** Run *handler* whenever a client reports that its roots changed. */
+  onRootsListChanged(handler: () => void | Promise<void>): void {
+    this._rootsListChangedHandlers.push(handler);
+  }
+
   // ── Lifecycle ─────────────────────────────────────────────
 
   async listen(opts: ListenOptions = {}): Promise<number> {
@@ -87,6 +99,8 @@ export class RapidMCP {
       promptManager: this._promptManager,
       middlewares: this._middlewares,
       pageSize: this._pageSize,
+      subscribeHandlers: this._subscribeHandlers,
+      rootsListChangedHandlers: this._rootsListChangedHandlers,
       onSessionAdd: (queue) => {
         this._sessions.add(queue);
       },

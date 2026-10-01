@@ -1,6 +1,31 @@
-import type { ResourceConfig, RegisteredResource, ResourceTemplateConfig, RegisteredResourceTemplate } from "./resource.js";
+import type {
+  ResourceConfig,
+  RegisteredResource,
+  ResourceLoadResult,
+  ResourceTemplateConfig,
+  RegisteredResourceTemplate,
+} from "./resource.js";
 import { matchUriTemplate } from "./uri-template.js";
 import { McpError } from "../errors.js";
+
+type Content = { type: string; text: string; data: Uint8Array; mimeType: string; uri: string };
+
+/** Text stays text; a blob becomes image/audio/resource content according to its mime type. */
+function toContent(result: ResourceLoadResult, mimeType: string, uri: string): Content[] {
+  if (result.blob === undefined) {
+    return [{ type: "text", text: result.text ?? "", data: new Uint8Array(), mimeType, uri }];
+  }
+  const data =
+    typeof result.blob === "string"
+      ? new Uint8Array(Buffer.from(result.blob, "base64"))
+      : result.blob;
+  const type = mimeType.startsWith("image/")
+    ? "image"
+    : mimeType.startsWith("audio/")
+      ? "audio"
+      : "resource";
+  return [{ type, text: "", data, mimeType, uri }];
+}
 
 export class ResourceManager {
   private _resources = new Map<string, RegisteredResource>();
@@ -38,15 +63,13 @@ export class ResourceManager {
   async readResource(uri: string): Promise<Array<{ type: string; text: string; data: Uint8Array; mimeType: string; uri: string }>> {
     const resource = this._resources.get(uri);
     if (resource) {
-      const result = await resource.load();
-      return [{ type: "text", text: result.text ?? "", data: new Uint8Array(), mimeType: resource.mimeType, uri }];
+      return toContent(await resource.load(), resource.mimeType, uri);
     }
 
     for (const template of this._templates.values()) {
       const params = matchUriTemplate(uri, template.uriTemplate);
       if (params) {
-        const result = await template.load(params);
-        return [{ type: "text", text: result.text ?? "", data: new Uint8Array(), mimeType: template.mimeType, uri }];
+        return toContent(await template.load(params), template.mimeType, uri);
       }
     }
 

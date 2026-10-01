@@ -32,6 +32,10 @@ export interface McpServicerOptions {
   promptManager: PromptManager;
   middlewares: Middleware[];
   pageSize?: number;
+  /** Called with the uri when a client subscribes to a resource. */
+  subscribeHandlers?: Array<(uri: string) => void | Promise<void>>;
+  /** Called when a client reports that its roots changed. */
+  rootsListChangedHandlers?: Array<() => void | Promise<void>>;
   /** Called when a new session becomes active (after initialized). */
   onSessionAdd?: (queue: AsyncQueue<DeepPartial<ServerEnvelope> | null>) => void;
   /** Called when a session ends. */
@@ -46,6 +50,8 @@ export class McpServicer implements McpServiceImplementation {
   private _promptManager: PromptManager;
   private _middlewares: Middleware[];
   private _pageSize: number | undefined;
+  private _subscribeHandlers: Array<(uri: string) => void | Promise<void>>;
+  private _rootsListChangedHandlers: Array<() => void | Promise<void>>;
   private _onSessionAdd?: (queue: AsyncQueue<DeepPartial<ServerEnvelope> | null>) => void;
   private _onSessionRemove?: (queue: AsyncQueue<DeepPartial<ServerEnvelope> | null>) => void;
 
@@ -57,6 +63,8 @@ export class McpServicer implements McpServiceImplementation {
     this._promptManager = opts.promptManager;
     this._middlewares = opts.middlewares;
     this._pageSize = opts.pageSize;
+    this._subscribeHandlers = opts.subscribeHandlers ?? [];
+    this._rootsListChangedHandlers = opts.rootsListChangedHandlers ?? [];
     this._onSessionAdd = opts.onSessionAdd;
     this._onSessionRemove = opts.onSessionRemove;
   }
@@ -121,10 +129,12 @@ export class McpServicer implements McpServiceImplementation {
                   serverName: this._name,
                   serverVersion: this._version,
                   capabilities: {
-                    tools: true,
+                    tools: this._toolManager.listTools().length > 0,
                     toolsListChanged: true,
-                    resources: true,
-                    prompts: true,
+                    resources:
+                      this._resourceManager.listResources().length > 0 ||
+                      this._resourceManager.listResourceTemplates().length > 0,
+                    prompts: this._promptManager.listPrompts().length > 0,
                   },
                 },
               },
@@ -340,14 +350,16 @@ export class McpServicer implements McpServiceImplementation {
           }
 
           case "subscribeRes": {
-            // Resource subscriptions — acknowledged but not actively tracked yet
+            const uri = msg.subscribeRes.uri;
+            await this._runHandlers("resource subscribe", this._subscribeHandlers, (h) => h(uri));
             break;
           }
 
           case "clientNotification": {
-            // Handle client notifications (e.g., roots list changed)
             if (msg.clientNotification.type === ClientNotification_Type.ROOTS_LIST_CHANGED) {
-              // Could trigger re-fetching roots, but for now just acknowledge
+              await this._runHandlers("roots list changed", this._rootsListChangedHandlers, (h) =>
+                h(),
+              );
             }
             break;
           }
@@ -434,6 +446,21 @@ export class McpServicer implements McpServiceImplementation {
       });
     } catch (err) {
       this._enqueueError(writeQueue, rid, err);
+    }
+  }
+
+  /** Run user handlers one by one; a failing handler is logged, never fatal to the session. */
+  private async _runHandlers<H>(
+    label: string,
+    handlers: H[],
+    call: (handler: H) => void | Promise<void>,
+  ): Promise<void> {
+    for (const handler of handlers) {
+      try {
+        await call(handler);
+      } catch (err) {
+        console.error(`[rapidmcp] ${label} handler failed:`, err);
+      }
     }
   }
 

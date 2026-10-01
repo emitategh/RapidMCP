@@ -1,6 +1,7 @@
 export interface ResourceLoadResult {
   text?: string;
-  blob?: string;
+  /** Binary content: raw bytes, or a base64-encoded string. */
+  blob?: string | Uint8Array;
 }
 
 export interface ResourceConfig {
