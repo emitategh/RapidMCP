@@ -10,7 +10,7 @@ from functools import partial
 from typing import Any
 
 from rapidmcp._generated import mcp_pb2
-from rapidmcp._utils import _to_content_items
+from rapidmcp._utils import _invoke, _to_content_items
 from rapidmcp.errors import McpError, ToolError
 from rapidmcp.middleware import Middleware, ToolCallContext
 from rapidmcp.tools.tool import (
@@ -147,7 +147,7 @@ class ToolManager:
                     args[param_name] = ctx
                     break
         try:
-            result = await tool.handler(**args)
+            result = await _invoke(tool.handler, **args)
             content = _to_content_items(result)
             return mcp_pb2.CallToolResponse(content=content, is_error=False)
         except ToolError as e:

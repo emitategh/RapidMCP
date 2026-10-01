@@ -3,11 +3,28 @@
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 import json
+from collections.abc import Callable
 from typing import Any
 
 from rapidmcp._generated import mcp_pb2
 from rapidmcp.content import Audio, Image
+
+
+async def _invoke(fn: Callable[..., Any], /, *args: Any, **kwargs: Any) -> Any:
+    """Call a user handler that may be ``async def`` or a plain ``def``.
+
+    Plain functions run in a worker thread so a blocking handler cannot stall
+    the event loop (and with it every other session on the server).
+    """
+    if inspect.iscoroutinefunction(fn):
+        return await fn(*args, **kwargs)
+    result = await asyncio.to_thread(fn, *args, **kwargs)
+    if inspect.isawaitable(result):
+        result = await result
+    return result
 
 
 def _to_content_items(result: Any) -> list[mcp_pb2.ContentItem]:

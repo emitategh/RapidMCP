@@ -10,7 +10,7 @@ import uuid
 from typing import TYPE_CHECKING
 
 from rapidmcp._generated import mcp_pb2, mcp_pb2_grpc
-from rapidmcp._utils import _paginate
+from rapidmcp._utils import _invoke, _paginate
 from rapidmcp.context import Context
 from rapidmcp.errors import McpError
 from rapidmcp.resources.uri_template import match_uri_template
@@ -272,9 +272,9 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                     return
                 try:
                     if template_params is not None:
-                        raw = await res.handler(**template_params)
+                        raw = await _invoke(res.handler, **template_params)
                     else:
-                        raw = await res.handler()
+                        raw = await _invoke(res.handler)
                 except Exception:
                     logger.exception("Resource handler for '%s' raised", uri)
                     await write_queue.put(
@@ -364,7 +364,7 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                     )
                     return
                 try:
-                    text = await prompt.handler(**dict(req.arguments))
+                    text = await _invoke(prompt.handler, **dict(req.arguments))
                 except Exception:
                     logger.exception("Prompt handler '%s' raised", req.name)
                     await write_queue.put(
