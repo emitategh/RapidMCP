@@ -11,9 +11,10 @@ from typing import Any
 
 from grpc import aio as grpc_aio
 
-from rapidmcp._generated import mcp_pb2, mcp_pb2_grpc
+from rapidmcp._generated import mcp_pb2, mcp_pb2_grpc, mcp_v2_pb2_grpc
 from rapidmcp._servicer import _McpServicer
 from rapidmcp._utils import _prefix_resource_uri
+from rapidmcp._v2_servicer import _McpV2Servicer
 from rapidmcp.auth import TLSConfig, _AuthInterceptor, _build_server_credentials
 from rapidmcp.context import Context
 from rapidmcp.middleware import Middleware
@@ -269,6 +270,7 @@ class RapidMCP:
         async def bind(bind_host: str) -> grpc_aio.Server:
             grpc_server = grpc_aio.server(interceptors=interceptors)
             mcp_pb2_grpc.add_McpServicer_to_server(_McpServicer(self), grpc_server)
+            mcp_v2_pb2_grpc.add_McpServicer_to_server(_McpV2Servicer(self), grpc_server)
             address = f"{bind_host}:{port}"
             if server_credentials:
                 self._port = grpc_server.add_secure_port(address, server_credentials)
