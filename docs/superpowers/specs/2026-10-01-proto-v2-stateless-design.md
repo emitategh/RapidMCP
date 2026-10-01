@@ -1,6 +1,7 @@
 # RapidMCP proto v2 — following MCP 2026-07-28
 
-Status: draft for review · 2026-10-01
+Status: approved by the owner on 2026-10-01, with the five recommended decisions
+at the end accepted · phase 1 plan: `docs/superpowers/plans/2026-10-01-proto-v2-phase-1.md`
 
 ## What this is for
 
@@ -222,8 +223,15 @@ sends a mode the request's capabilities did not declare.
 Field numbers 2 and 3 of both `oneof`s are reserved for sampling and roots
 should they ever be needed.
 
-`arguments` becomes a `Struct` instead of v1's JSON string, so arguments are
-typed on the wire and not parsed twice.
+**Amendment (2026-10-01, while planning phase 1):** JSON-shaped values —
+tool arguments, input and output schemas, elicitation forms and content,
+extension settings — travel as JSON text (`string`), as in v1, not as
+`google.protobuf.Struct`. `Struct` stores every number as a double, so an
+integer argument or a schema's `minLength: 2` would arrive as `2.0`, and
+integers above 2^53 would lose precision. Read every `Struct` in the sketches
+of this document as a JSON string. In the same spirit, the four tool
+annotation hints are `optional bool` in v2, so "not set" is distinguishable
+from `false` and the client can apply MCP's defaults.
 
 **Authoring a tool.** There are two levels.
 
