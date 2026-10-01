@@ -433,3 +433,26 @@ async def test_allowed_tools_none_returns_all() -> None:
         tools = await grpc.list_tools()
         names = {t.info.name for t in tools}
         assert names == {"add", "echo"}
+
+
+async def test_list_tools_follows_pagination() -> None:
+    """A paginating server must not lose tools beyond the first page."""
+    server = RapidMCP(name="paged", version="0.0.1", page_size=2)
+
+    for tool_name in ("one", "two", "three"):
+
+        async def handler() -> str:
+            return "ok"
+
+        handler.__name__ = tool_name
+        server.tool()(handler)
+
+    async with server:
+        adapter = MCPServerGRPC(address=f"localhost:{server.port}")
+        await adapter.initialize()
+        try:
+            tools = await adapter.list_tools()
+        finally:
+            await adapter.aclose()
+
+    assert len(tools) == 3

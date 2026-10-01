@@ -178,6 +178,10 @@ class MCPServerGRPC(MCPServer):
             return self._lk_tools
 
         result = await self._grpc_client.list_tools()
+        while result.next_cursor:
+            page = await self._grpc_client.list_tools(cursor=result.next_cursor)
+            result.items.extend(page.items)
+            result.next_cursor = page.next_cursor
         tools: list[MCPTool] = []
         for t in result.items:
             if self._allowed_tools and t.name not in self._allowed_tools:
