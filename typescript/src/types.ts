@@ -251,3 +251,38 @@ export function convertCompleteResult(p: {
 }): CompleteResult {
   return { values: [...p.values], hasMore: p.hasMore, total: p.total };
 }
+
+/**
+ * Like convertTool for a v2 Tool, whose hints may be unset. An unset hint
+ * takes MCP's default: not read-only, destructive, not idempotent, open-world.
+ */
+export function convertToolV2(p: {
+  name: string;
+  description: string;
+  inputSchema: string;
+  outputSchema: string;
+  annotations?:
+    | {
+        title: string;
+        readOnlyHint?: boolean | undefined;
+        destructiveHint?: boolean | undefined;
+        idempotentHint?: boolean | undefined;
+        openWorldHint?: boolean | undefined;
+      }
+    | undefined;
+}): Tool {
+  const a = p.annotations;
+  return {
+    name: p.name,
+    description: p.description,
+    inputSchema: p.inputSchema ? JSON.parse(p.inputSchema) : {},
+    outputSchema: p.outputSchema ? JSON.parse(p.outputSchema) : null,
+    annotations: {
+      title: a?.title ?? "",
+      readOnlyHint: a?.readOnlyHint ?? false,
+      destructiveHint: a?.destructiveHint ?? true,
+      idempotentHint: a?.idempotentHint ?? false,
+      openWorldHint: a?.openWorldHint ?? true,
+    },
+  };
+}

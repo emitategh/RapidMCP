@@ -19,6 +19,11 @@ export interface ClientOptions {
   token?: string;
   tls?: TlsConfig;
   requestTimeout?: number;
+  /**
+   * Which protocol version to speak. "legacy" (default) is the v1 stream;
+   * "modern" is the stateless v2 service; "auto" tries v2 and falls back to v1.
+   */
+  mode?: "legacy" | "modern" | "auto";
 }
 
 /** PEM material for the server: a file path or the bytes themselves. */

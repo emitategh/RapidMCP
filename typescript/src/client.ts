@@ -21,6 +21,7 @@ import {
   type ListRootsResponse,
 } from "../generated/mcp.js";
 import { ErrorCode, McpError } from "./errors.js";
+import { V2Transport, isV2Missing } from "./v2/client-transport.js";
 import { AsyncQueue, PendingRequests, NotificationRegistry, withTimeout } from "./session.js";
 import { buildChannelCredentials, buildMetadata, type ClientOptions } from "./auth.js";
 import {
@@ -67,6 +68,8 @@ export class Client {
   private _serverInfo: ServerInfo | null = null;
   private _refCount = 0;
   private _connected = false;
+  private _mode: "legacy" | "modern" | "auto";
+  private _v2: V2Transport | null = null;
   /** True while a reader loop is consuming the current stream. */
   private _streamOpen = false;
   /** In-flight connect(), shared by concurrent callers. */
@@ -82,6 +85,7 @@ export class Client {
     this._target = target;
     this._opts = opts;
     this._requestTimeout = opts.requestTimeout ?? 30_000;
+    this._mode = opts.mode ?? "legacy";
   }
 
   /** Server info populated after connect(). */
@@ -92,6 +96,12 @@ export class Client {
   /** Whether the client is currently connected to the server. */
   get isConnected(): boolean {
     return this._connected;
+  }
+
+  /** "v2" or "v1" once connected, null before. */
+  get protocol(): "v1" | "v2" | null {
+    if (this._v2) return "v2";
+    return this._connected ? "v1" : null;
   }
 
   /** Connect to the server: open channel, start bidi stream, run initialize handshake. */
@@ -114,6 +124,29 @@ export class Client {
 
     const credentials = buildChannelCredentials(this._opts);
     this._channel = createChannel(this._target, credentials);
+
+    if (this._mode !== "legacy") {
+      const transport = new V2Transport(
+        this._channel,
+        this._opts,
+        this._requestTimeout,
+        () => this._elicitationHandler !== null,
+      );
+      try {
+        this._serverInfo = await transport.discover();
+        this._v2 = transport;
+        this._connected = true;
+        return;
+      } catch (err) {
+        if (!(this._mode === "auto" && isV2Missing(err))) {
+          this._channel.close();
+          this._channel = null;
+          throw err;
+        }
+        // An old server: carry on with the v1 stream on the same channel.
+      }
+    }
+
     const grpcClient = createClientFactory().create(McpDefinition, this._channel);
 
     // Build call options with metadata if token is set
@@ -295,6 +328,16 @@ export class Client {
     });
   }
 
+  /** Throw for operations the v2 protocol does not carry yet. */
+  private _v1Only(operation: string): void {
+    if (this._v2) {
+      throw new McpError(
+        ErrorCode.MethodNotFound,
+        `${operation} is not available on the v2 protocol yet; use mode: "legacy"`,
+      );
+    }
+  }
+
   /** Fail now rather than at the request timeout when nothing is reading replies. */
   private _assertStreamOpen(): void {
     if (!this._streamOpen) {
@@ -321,6 +364,7 @@ export class Client {
   // ── Public API ────────────────────────────────────────────
 
   async listTools(cursor?: string): Promise<ListResult<Tool>> {
+    if (this._v2) return this._v2.listTools(cursor);
     const resp = (await this._request({
       message: {
         $case: "listTools" as const,
@@ -342,6 +386,7 @@ export class Client {
       timeout?: number;
     },
   ): Promise<CallToolResult> {
+    this._v1Only("callTool");
     if (opts?.signal?.aborted) {
       throw new McpError(-1, "Aborted");
     }
@@ -388,6 +433,7 @@ export class Client {
   }
 
   async listResources(cursor?: string): Promise<ListResult<Resource>> {
+    if (this._v2) return this._v2.listResources(cursor);
     const resp = (await this._request({
       message: {
         $case: "listResources" as const,
@@ -401,6 +447,7 @@ export class Client {
   }
 
   async readResource(uri: string): Promise<ReadResourceResult> {
+    this._v1Only("readResource");
     const resp = (await this._request({
       message: {
         $case: "readResource" as const,
@@ -411,6 +458,7 @@ export class Client {
   }
 
   subscribeResource(uri: string): void {
+    this._v1Only("subscribeResource");
     this._sendQueue.enqueue({
       requestId: 0n,
       message: {
@@ -421,6 +469,7 @@ export class Client {
   }
 
   async listResourceTemplates(cursor?: string): Promise<ListResult<ResourceTemplate>> {
+    if (this._v2) return this._v2.listResourceTemplates(cursor);
     const resp = (await this._request({
       message: {
         $case: "listResourceTemplates" as const,
@@ -436,6 +485,7 @@ export class Client {
   }
 
   async listPrompts(cursor?: string): Promise<ListResult<Prompt>> {
+    if (this._v2) return this._v2.listPrompts(cursor);
     const resp = (await this._request({
       message: {
         $case: "listPrompts" as const,
@@ -452,6 +502,7 @@ export class Client {
     name: string,
     args: Record<string, string> = {},
   ): Promise<GetPromptResult> {
+    this._v1Only("getPrompt");
     const resp = (await this._request({
       message: {
         $case: "getPrompt" as const,
@@ -467,6 +518,7 @@ export class Client {
     argName: string,
     argValue: string,
   ): Promise<CompleteResult> {
+    if (this._v2) return this._v2.complete(refType, refName, argName, argValue);
     const resp = (await this._request({
       message: {
         $case: "complete" as const,
@@ -480,6 +532,10 @@ export class Client {
   }
 
   async ping(): Promise<boolean> {
+    if (this._v2) {
+      await this._v2.discover();
+      return true;
+    }
     await this._request({
       message: { $case: "ping" as const, ping: {} },
     });
@@ -492,6 +548,7 @@ export class Client {
    * response for a cancelled request.
    */
   async cancel(targetRequestId: bigint): Promise<void> {
+    this._v1Only("cancel");
     this._pending.reject(
       targetRequestId,
       new McpError(ErrorCode.RequestCancelled, "Request cancelled"),
@@ -506,6 +563,7 @@ export class Client {
   }
 
   notifyRootsListChanged(): void {
+    this._v1Only("notifyRootsListChanged");
     this._sendQueue.enqueue({
       requestId: 0n,
       message: {
@@ -566,6 +624,14 @@ export class Client {
 
   /** Close the connection: close send stream, await reader, cancel pending, close channel. */
   async close(): Promise<void> {
+    if (this._v2) {
+      this._v2 = null;
+      this._channel?.close();
+      this._channel = null;
+      this._connected = false;
+      this._serverInfo = null;
+      return;
+    }
     if (!this._connected && !this._readerDone) return;
 
     // Signal the send generator to stop

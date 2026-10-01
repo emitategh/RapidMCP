@@ -147,6 +147,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### [Unreleased]
 
 ### Added
+- **Protocol v2 (experimental, phase 1):** servers also answer the stateless `mcp.v2.Mcp` service — `discover`, the list operations and `complete` — following MCP 2026-07-28. `new Client(addr, { mode: "modern" })` speaks it; `mode: "auto"` tries it and falls back to v1; the default stays `"legacy"`. Tool calls, resource reads and prompts are not on v2 yet
 - Server-side token auth (`new RapidMCP({ auth })`) and TLS/mTLS (`tls: { cert, key, ca? }`)
 - `mount(sub, { prefix })` — same naming and all-or-nothing collision rules as Python
 - `ctx.signal` — aborted when the client cancels the call, the call times out, or the session ends
