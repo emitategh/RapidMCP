@@ -6,7 +6,7 @@ import type {
   RegisteredResourceTemplate,
 } from "./resource.js";
 import { matchUriTemplate } from "./uri-template.js";
-import { McpError } from "../errors.js";
+import { ErrorCode, McpError } from "../errors.js";
 
 type Content = { type: string; text: string; data: Uint8Array; mimeType: string; uri: string };
 
@@ -90,6 +90,6 @@ export class ResourceManager {
       }
     }
 
-    throw new McpError(404, `Resource '${uri}' not found`);
+    throw new McpError(ErrorCode.InvalidParams, `Resource '${uri}' not found`);
   }
 }

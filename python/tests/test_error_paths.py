@@ -48,21 +48,21 @@ async def test_middleware_exception_is_reported_to_client(server):
     async with Client(f"localhost:{server.port}") as client:
         with pytest.raises(McpError) as exc:
             await asyncio.wait_for(client.call_tool("echo", {"text": "x"}), timeout=_PROMPT)
-        assert exc.value.code == 500
+        assert exc.value.code == -32603
 
 
 async def test_invalid_json_arguments_are_rejected(server):
     async with Client(f"localhost:{server.port}") as client:
         with pytest.raises(McpError) as exc:
             await _call_tool_raw(client, "echo", "{not json")
-        assert exc.value.code == 400
+        assert exc.value.code == -32602
 
 
 async def test_non_object_arguments_are_rejected(server):
     async with Client(f"localhost:{server.port}") as client:
         with pytest.raises(McpError) as exc:
             await _call_tool_raw(client, "echo", "[1, 2]")
-        assert exc.value.code == 400
+        assert exc.value.code == -32602
 
 
 async def test_completion_handler_exception_is_reported_to_client(server):
@@ -71,7 +71,7 @@ async def test_completion_handler_exception_is_reported_to_client(server):
             await asyncio.wait_for(
                 client.complete("ref/prompt", "greet", "name", "a"), timeout=_PROMPT
             )
-        assert exc.value.code == 500
+        assert exc.value.code == -32603
 
 
 async def test_session_survives_completion_handler_exception(server):

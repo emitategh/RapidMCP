@@ -1,5 +1,5 @@
 export { Client } from "./client.js";
-export { McpError, ToolError } from "./errors.js";
+export { ErrorCode, McpError, ToolError } from "./errors.js";
 export {
   type ContentItem,
   type Tool,

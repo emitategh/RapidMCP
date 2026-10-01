@@ -11,7 +11,7 @@ from typing import Any
 
 from rapidmcp._generated import mcp_pb2
 from rapidmcp._utils import _invoke, _to_content_items
-from rapidmcp.errors import McpError, ToolError
+from rapidmcp.errors import INVALID_PARAMS, McpError, ToolError
 from rapidmcp.middleware import Middleware, ToolCallContext
 from rapidmcp.tools.tool import (
     RegisteredTool,
@@ -138,7 +138,7 @@ class ToolManager:
 
         tool = self._tools.get(name)
         if not tool:
-            raise McpError(code=404, message=f"Tool '{name}' not found")
+            raise McpError(code=INVALID_PARAMS, message=f"Tool '{name}' not found")
         args = dict(arguments)
         if tool.needs_context and ctx is not None:
             hints = _resolve_hints(tool.handler)
@@ -154,6 +154,10 @@ class ToolManager:
             # Raised on purpose by the handler — the message is meant for the caller.
             logger.exception("Tool '%s' raised an exception", name)
             text = e.message
+        except McpError:
+            # A protocol-level failure (e.g. the client lacks a capability the
+            # tool needs) is reported as an error, not as tool output.
+            raise
         except Exception as e:
             # The traceback stays in the server log; it is never sent to the client.
             logger.exception("Tool '%s' raised an exception", name)

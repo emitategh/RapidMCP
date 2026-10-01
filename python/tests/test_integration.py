@@ -207,7 +207,9 @@ async def test_grpc_elicitation_roundtrip():
 
 @pytest.mark.asyncio
 async def test_grpc_sampling_without_capability():
-    """Tool calling ctx.sample() without client capability gets an error response."""
+    """Tool calling ctx.sample() without client capability fails with MCP's -32021."""
+    from rapidmcp.errors import McpError
+
     server = RapidMCP(name="no-cap-server", version="0.1")
 
     @server.tool(description="Try sampling")
@@ -218,9 +220,10 @@ async def test_grpc_sampling_without_capability():
     async with server:
         async with Client(f"localhost:{server.port}") as client:
             # No sampling handler registered — capability is False
-            result = await client.call_tool("try_sample", {"text": "hi"})
-            assert result.is_error
-            assert "sampling" in result.content[0].text.lower()
+            with pytest.raises(McpError) as exc_info:
+                await client.call_tool("try_sample", {"text": "hi"})
+            assert exc_info.value.code == -32021
+            assert "sampling" in exc_info.value.message.lower()
 
 
 @pytest.mark.asyncio
@@ -493,7 +496,7 @@ async def test_grpc_read_resource_template_not_found():
         async with Client(f"localhost:{server.port}") as client:
             with pytest.raises(McpError) as exc_info:
                 await client.read_resource("res://other/99")
-            assert exc_info.value.code == 404
+            assert exc_info.value.code == -32602
 
 
 # ---------------------------------------------------------------------------

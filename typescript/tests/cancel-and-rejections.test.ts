@@ -110,7 +110,7 @@ describe("cancellation and promise hygiene", () => {
     await client.close();
   });
 
-  it("answers a cancelled tool call with error 499 instead of its result", async () => {
+  it("rejects a cancelled tool call with 499 instead of returning its result", async () => {
     const client = new Client(`127.0.0.1:${port}`);
     await client.connect(); // initialize takes client request id 1
 

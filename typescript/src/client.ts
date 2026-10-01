@@ -20,7 +20,7 @@ import {
   type Root,
   type ListRootsResponse,
 } from "../generated/mcp.js";
-import { McpError } from "./errors.js";
+import { ErrorCode, McpError } from "./errors.js";
 import { AsyncQueue, PendingRequests, NotificationRegistry, withTimeout } from "./session.js";
 import { buildChannelCredentials, buildMetadata, type ClientOptions } from "./auth.js";
 import {
@@ -108,7 +108,7 @@ export class Client {
   private async _doConnect(): Promise<void> {
     // Drop whatever a previous, now-dead connection left behind.
     this._channel?.close();
-    this._pending.rejectAll(new McpError(503, "Connection closed"));
+    this._pending.rejectAll(new McpError(ErrorCode.NotConnected, "Connection closed"));
     this._sendQueue = new AsyncQueue<DeepPartial<ClientEnvelope> | null>();
     const generation = ++this._generation;
 
@@ -280,7 +280,7 @@ export class Client {
       if (generation === this._generation) {
         this._streamOpen = false;
         this._connected = false;
-        this._pending.rejectAll(new McpError(503, "Connection closed"));
+        this._pending.rejectAll(new McpError(ErrorCode.NotConnected, "Connection closed"));
       }
     }
   }
@@ -298,7 +298,7 @@ export class Client {
   /** Fail now rather than at the request timeout when nothing is reading replies. */
   private _assertStreamOpen(): void {
     if (!this._streamOpen) {
-      throw new McpError(503, `Not connected to ${this._target}`);
+      throw new McpError(ErrorCode.NotConnected, `Not connected to ${this._target}`);
     }
   }
 
@@ -314,7 +314,7 @@ export class Client {
 
     return withTimeout(promise, this._requestTimeout, () => {
       this._pending.discard(requestId);
-      return new McpError(408, "Request timeout");
+      return new McpError(ErrorCode.RequestTimeout, "Request timeout");
     });
   }
 
@@ -362,7 +362,7 @@ export class Client {
       // We stopped waiting — don't leave the tool running on the server.
       this._pending.discard(requestId);
       void this.cancel(requestId);
-      return new McpError(408, "Request timeout");
+      return new McpError(ErrorCode.RequestTimeout, "Request timeout");
     });
     const racers: Promise<unknown>[] = [timed];
 
@@ -486,8 +486,16 @@ export class Client {
     return true;
   }
 
+  /**
+   * Stop waiting for a request and tell the server to stop working on it.
+   * The pending call rejects here with McpError 499; the server sends no
+   * response for a cancelled request.
+   */
   async cancel(targetRequestId: bigint): Promise<void> {
-    // Fire-and-forget — no response expected for cancel
+    this._pending.reject(
+      targetRequestId,
+      new McpError(ErrorCode.RequestCancelled, "Request cancelled"),
+    );
     this._sendQueue.enqueue({
       requestId: 0n,
       message: {

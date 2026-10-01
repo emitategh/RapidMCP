@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from rapidmcp._generated import mcp_pb2, mcp_pb2_grpc
 from rapidmcp._utils import _invoke, _paginate
 from rapidmcp.context import Context
-from rapidmcp.errors import McpError
+from rapidmcp.errors import INTERNAL_ERROR, INVALID_PARAMS, METHOD_NOT_FOUND, McpError
 from rapidmcp.resources.uri_template import match_uri_template
 from rapidmcp.session import PendingRequests
 
@@ -149,11 +149,12 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                             args = json.loads(_req.arguments) if _req.arguments else {}
                         except ValueError:
                             raise McpError(
-                                400, f"Invalid arguments for tool '{_req.name}': not valid JSON"
+                                INVALID_PARAMS,
+                                f"Invalid arguments for tool '{_req.name}': not valid JSON",
                             ) from None
                         if not isinstance(args, dict):
                             raise McpError(
-                                400,
+                                INVALID_PARAMS,
                                 f"Invalid arguments for tool '{_req.name}': expected a JSON object",
                             )
                         result = await self._server._dispatch_tool(_req.name, args, ctx)
@@ -180,14 +181,7 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                             _rid,
                             elapsed_ms,
                         )
-                        await write_queue.put(
-                            mcp_pb2.ServerEnvelope(
-                                request_id=_rid,
-                                error=mcp_pb2.ErrorResponse(
-                                    code=499, message="Tool call cancelled"
-                                ),
-                            )
-                        )
+                        # No response: the client has stopped waiting for this request.
                     except McpError as e:
                         elapsed_ms = (time.monotonic() - t0) * 1000
                         logger.warning(
@@ -216,7 +210,7 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                             mcp_pb2.ServerEnvelope(
                                 request_id=_rid,
                                 error=mcp_pb2.ErrorResponse(
-                                    code=500, message=f"Tool call '{_req.name}' failed"
+                                    code=INTERNAL_ERROR, message=f"Tool call '{_req.name}' failed"
                                 ),
                             )
                         )
@@ -266,7 +260,7 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                         mcp_pb2.ServerEnvelope(
                             request_id=rid,
                             error=mcp_pb2.ErrorResponse(
-                                code=404,
+                                code=INVALID_PARAMS,
                                 message=f"Resource '{uri}' not found",
                             ),
                         )
@@ -283,7 +277,7 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                         mcp_pb2.ServerEnvelope(
                             request_id=rid,
                             error=mcp_pb2.ErrorResponse(
-                                code=500,
+                                code=INTERNAL_ERROR,
                                 message=f"Resource handler for '{uri}' failed",
                             ),
                         )
@@ -359,7 +353,7 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                         mcp_pb2.ServerEnvelope(
                             request_id=rid,
                             error=mcp_pb2.ErrorResponse(
-                                code=404,
+                                code=INVALID_PARAMS,
                                 message=f"Prompt '{req.name}' not found",
                             ),
                         )
@@ -373,7 +367,7 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                         mcp_pb2.ServerEnvelope(
                             request_id=rid,
                             error=mcp_pb2.ErrorResponse(
-                                code=500,
+                                code=INTERNAL_ERROR,
                                 message=f"Prompt handler '{req.name}' failed",
                             ),
                         )
@@ -469,7 +463,7 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                     mcp_pb2.ServerEnvelope(
                         request_id=rid,
                         error=mcp_pb2.ErrorResponse(
-                            code=400,
+                            code=METHOD_NOT_FOUND,
                             message=f"Unknown message type: {msg_type}",
                         ),
                     )
@@ -502,7 +496,8 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                                 mcp_pb2.ServerEnvelope(
                                     request_id=envelope.request_id,
                                     error=mcp_pb2.ErrorResponse(
-                                        code=500, message=f"Handler for '{msg_type}' failed"
+                                        code=INTERNAL_ERROR,
+                                        message=f"Handler for '{msg_type}' failed",
                                     ),
                                 )
                             )

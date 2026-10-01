@@ -1,6 +1,6 @@
 import type { ToolConfig, RegisteredTool } from "./tool.js";
 import { toContentItems } from "../_utils.js";
-import { McpError, ToolError } from "../errors.js";
+import { ErrorCode, McpError, ToolError } from "../errors.js";
 import type { CallToolResult } from "../middleware.js";
 import { toJSONSchema, type ZodType } from "zod";
 
@@ -58,7 +58,7 @@ export class ToolManager {
   async callTool(name: string, args: Record<string, unknown>, ctx: any): Promise<CallToolResult> {
     const tool = this._tools.get(name);
     if (!tool) {
-      throw new McpError(404, `Tool '${name}' not found`);
+      throw new McpError(ErrorCode.InvalidParams, `Tool '${name}' not found`);
     }
 
     let validatedArgs = args;
@@ -82,6 +82,10 @@ export class ToolManager {
       if (err instanceof ToolError) {
         // Thrown on purpose by the handler — the message is meant for the caller.
         message = detail;
+      } else if (err instanceof McpError) {
+        // A protocol-level failure (e.g. the client lacks a capability the tool
+        // needs) is reported as an error, not as tool output.
+        throw err;
       } else {
         message = this._maskErrorDetails
           ? `Error calling tool '${name}'`

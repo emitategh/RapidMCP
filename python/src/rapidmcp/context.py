@@ -7,7 +7,7 @@ import json
 
 from rapidmcp._generated import mcp_pb2
 from rapidmcp.elicitation import ElicitationResult, build_elicitation_schema
-from rapidmcp.errors import McpError
+from rapidmcp.errors import MISSING_CLIENT_CAPABILITY, McpError
 from rapidmcp.session import PendingRequests
 
 _DEFAULT_TIMEOUT: float = 30.0
@@ -44,6 +44,10 @@ class Context:
     ) -> mcp_pb2.SamplingResponse:
         """Request LLM completion from the client.
 
+        .. deprecated::
+            Sampling is deprecated in MCP 2026-07-28 (removal no earlier than
+            2027-07-28). Call your LLM provider directly from the server instead.
+
         Args:
             messages: List of ``mcp_pb2.SamplingMessage`` protos or dicts with
                 ``{"role": str, "content": str | list}`` keys.
@@ -62,7 +66,7 @@ class Context:
                 indefinitely. Raises ``asyncio.TimeoutError`` when exceeded.
         """
         if not self._capabilities.sampling:
-            raise McpError(400, "Client does not support sampling")
+            raise McpError(MISSING_CLIENT_CAPABILITY, "Client does not support sampling")
         rid = self._pending.next_id()
         future = self._pending.create(rid)
 
@@ -178,7 +182,7 @@ class Context:
             when accepted).
         """
         if not self._capabilities.elicitation:
-            raise McpError(400, "Client does not support elicitation")
+            raise McpError(MISSING_CLIENT_CAPABILITY, "Client does not support elicitation")
         if fields is not None and schema is not None:
             raise ValueError("Provide either 'schema' or 'fields', not both")
 
@@ -247,9 +251,14 @@ class Context:
     async def list_roots(
         self, timeout: float | None = _DEFAULT_TIMEOUT
     ) -> mcp_pb2.ListRootsResponse:
-        """Request the client's registered root URIs."""
+        """Request the client's registered root URIs.
+
+        .. deprecated::
+            Roots is deprecated in MCP 2026-07-28 (removal no earlier than
+            2027-07-28). Take directories or files as tool arguments instead.
+        """
         if not self._capabilities.roots:
-            raise McpError(400, "Client does not support roots")
+            raise McpError(MISSING_CLIENT_CAPABILITY, "Client does not support roots")
         rid = self._pending.next_id()
         future = self._pending.create(rid)
         await self._write_queue.put(

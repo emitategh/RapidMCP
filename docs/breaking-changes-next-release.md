@@ -74,6 +74,45 @@ Before, the tool ran to completion in all three cases.
 gone must hand the work off themselves (`asyncio.create_task`, a queue, a job
 runner). Tools holding resources should release them in `try/finally`.
 
+### Error codes follow MCP
+
+Codes a server sends now use the JSON-RPC values MCP specifies. Codes the
+client raises by itself keep their HTTP-style numbers, so the two cannot be
+confused.
+
+| Situation | Before | Now |
+|---|---|---|
+| Unknown tool, resource or prompt | `404` | `-32602` |
+| Arguments are not a JSON object | `400` | `-32602` |
+| Unknown message type | `400` | `-32601` |
+| A handler failed | `500` | `-32603` |
+| Client lacks a capability the tool needs | `400` | `-32021` |
+| Request timed out (raised by the client) | `408` | `408` |
+| Request cancelled (raised by the client) | `499` from the server | `499`, raised locally |
+| Not connected (raised by the client) | `503` | `503` |
+
+The constants are in `rapidmcp.errors` (`INVALID_PARAMS`, `INTERNAL_ERROR`, …).
+
+Two related changes:
+
+- An `McpError` raised inside a tool is now returned as an error instead of
+  `is_error` tool output. The usual case is `ctx.elicit()` / `ctx.sample()`
+  against a client that did not declare the capability: `call_tool` now raises
+  `McpError(-32021)` instead of returning an error result. `ToolError` still
+  produces `is_error` output.
+- The server no longer answers a cancelled call. `Client.cancel(request_id)`
+  fails the pending call locally with `McpError(499)`.
+
+**What to change:** `except McpError` blocks and tests that compare `code`
+against `404`, `400` or `500`.
+
+### Sampling and roots are deprecated
+
+MCP 2026-07-28 deprecates Sampling and Roots (removal no earlier than
+2027-07-28). `ctx.sample()` and `ctx.list_roots()` still work and are
+documented as deprecated. Call your LLM provider from the server, and take
+directories or files as tool arguments.
+
 ### Smaller behaviour changes
 
 - **Requests on a dead connection** raise `McpError(503)` immediately instead of
@@ -113,8 +152,9 @@ message is still `Request timeout`.
 
 ### `cancel` now does something
 
-Cancelling a call aborts `ctx.signal` in the tool and the call is answered with
-`McpError` code `499`. The signal is also aborted when the call times out on
+Cancelling a call aborts `ctx.signal` in the tool, and the pending call rejects
+on the client with `McpError` code `499`; the server sends no response for a
+cancelled call. The signal is also aborted when the call times out on
 the client and when the session ends. A tool that ignores `ctx.signal` still
 runs to completion, but its result is discarded.
 
@@ -122,6 +162,28 @@ A call whose `AbortSignal` is already aborted is no longer sent to the server.
 
 **What to change:** nothing is required; long-running tools should start
 honouring `ctx.signal`.
+
+### Error codes follow MCP
+
+| Situation | Before | Now |
+|---|---|---|
+| Unknown tool, resource or prompt | `404` | `-32602` |
+| Client lacks a capability the tool needs | `400` | `-32021` |
+| Request timed out (raised by the client) | `-1` | `408` |
+| Request cancelled (raised by the client) | — | `499` |
+| Not connected (raised by the client) | — | `503` |
+
+`ErrorCode` is exported with these values. An `McpError` thrown inside a tool
+is now returned as an error instead of `isError` tool output; `ToolError` still
+produces `isError` output.
+
+**What to change:** checks against `404` / `400`, and callers that expected
+`ctx.elicit()` on an unsupported client to come back as a tool result.
+
+### Sampling and roots are deprecated
+
+`ctx.sample()` and `ctx.listRoots()` are marked `@deprecated`, following MCP
+2026-07-28 (removal no earlier than 2027-07-28).
 
 ### Smaller behaviour changes
 

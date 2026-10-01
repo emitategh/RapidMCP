@@ -13,7 +13,7 @@ from grpc import aio as grpc_aio
 
 from rapidmcp._generated import mcp_pb2, mcp_pb2_grpc
 from rapidmcp.auth import ClientTLSConfig, _build_channel_credentials
-from rapidmcp.errors import McpError
+from rapidmcp.errors import NOT_CONNECTED, REQUEST_CANCELLED, REQUEST_TIMEOUT, McpError
 from rapidmcp.session import NotificationRegistry, PendingRequests
 from rapidmcp.types import (
     CallToolResult,
@@ -127,7 +127,7 @@ class Client:
             timeout = self._request_timeout
         if self._reader_task is None or self._reader_task.done():
             # Nothing is reading replies any more — fail now instead of at the timeout.
-            raise McpError(503, f"Not connected to {self._target}")
+            raise McpError(NOT_CONNECTED, f"Not connected to {self._target}")
         rid = self._pending.next_id()
         envelope.request_id = rid
         msg_type = envelope.WhichOneof("message")
@@ -150,7 +150,7 @@ class Client:
             if msg_type == "call_tool":
                 # We stopped waiting — don't leave the tool running on the server.
                 await self.cancel(rid)
-            raise McpError(408, f"Request timed out: {msg_type} rid={rid}") from None
+            raise McpError(REQUEST_TIMEOUT, f"Request timed out: {msg_type} rid={rid}") from None
         elapsed_ms = (time.monotonic() - t0) * 1000
         logger.debug("← %s rid=%d %.1fms", msg_type, rid, elapsed_ms)
         return result
@@ -374,6 +374,12 @@ class Client:
         return True
 
     async def cancel(self, target_request_id: int) -> None:
+        """Stop waiting for a request and tell the server to stop working on it.
+
+        The pending call fails here with ``McpError(499)``; the server sends no
+        response for a cancelled request.
+        """
+        self._pending.reject(target_request_id, McpError(REQUEST_CANCELLED, "Request cancelled"))
         await self._send(
             mcp_pb2.ClientEnvelope(
                 request_id=0,

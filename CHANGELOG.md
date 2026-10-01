@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING**: a failing tool returns `Error calling tool '<name>': <message>` instead of a full traceback; raise `ToolError` to return a message verbatim
 - **BREAKING**: prompt text is returned with role `user` (was `assistant`), matching the TypeScript server and FastMCP
 - **BREAKING**: tool input schemas use real JSON Schema types for `list`, `dict`, unions, `Literal` and `Enum`; unknown or missing annotations yield `{}` (everything non-primitive used to be `"string"`), and `*args` / `**kwargs` are no longer listed
+- **BREAKING**: error codes sent by the server follow MCP / JSON-RPC — unknown tool, resource or prompt and invalid arguments are `-32602` (were `404` / `400`), unknown message type is `-32601`, handler failures are `-32603` (were `500`), and a missing client capability is `-32021` (was `400`). Constants live in `rapidmcp.errors`
+- **BREAKING**: an `McpError` raised inside a tool (e.g. `ctx.elicit()` against a client without elicitation) is returned as an error, not as `is_error` tool output; `ToolError` is unchanged
+- **BREAKING**: `Client.cancel()` fails the pending call locally with `McpError(499)`, and the server no longer sends a response for a cancelled call
+- `ctx.sample()` and `ctx.list_roots()` are documented as deprecated, following MCP 2026-07-28
 - Capabilities: `tools_list_changed` is announced, and resource templates count as resources
 - The startup banner prints the address actually bound
 
@@ -155,11 +159,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **BREAKING**: a tool that throws a plain `Error` is reported as `Error calling tool '<name>': <message>` (was the bare message); `ToolError` messages are still returned verbatim
 - **BREAKING**: request timeouts reject with `McpError` code `408` (was `-1`)
+- **BREAKING**: error codes sent by the server follow MCP / JSON-RPC — unknown tool, resource or prompt is `-32602` (was `404`) and a missing client capability is `-32021` (was `400`). `ErrorCode` is exported
+- **BREAKING**: an `McpError` thrown inside a tool is returned as an error, not as `isError` tool output; `ToolError` is unchanged
+- `ctx.sample()` and `ctx.listRoots()` are marked `@deprecated`, following MCP 2026-07-28
 - Capabilities reflect what is registered instead of always claiming tools, resources and prompts
 - URI template variables are percent-decoded and `{?a,b}` query parameters are extracted
 
 ### Fixed
-- `cancel` did not cancel the tool call and could fail an unrelated sampling/elicitation request sharing the same id; cancelled calls are now answered with error `499`
+- `cancel` did not cancel the tool call and could fail an unrelated sampling/elicitation request sharing the same id; a cancelled call now rejects on the client with `499` and gets no response from the server
 - `callTool` with a `signal` caused an unhandled rejection (a process crash by default) whenever the call failed
 - A call whose signal was already aborted was still sent to the server
 - A throwing notification handler caused an unhandled rejection

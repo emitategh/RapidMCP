@@ -1,5 +1,5 @@
 import { ServerNotification_Type, type DeepPartial, type ServerEnvelope } from "../generated/mcp.js";
-import { McpError } from "./errors.js";
+import { ErrorCode, McpError } from "./errors.js";
 import { AsyncQueue, PendingRequests, withTimeout } from "./session.js";
 
 interface ClientCapabilities {
@@ -105,9 +105,15 @@ export class Context {
     });
   }
 
+  /**
+   * Ask the client's model for a completion.
+   *
+   * @deprecated Sampling is deprecated in MCP 2026-07-28 (removal no earlier than
+   * 2027-07-28). Call your LLM provider directly from the server instead.
+   */
   async sample(request: SamplingRequestInput, opts: ReplyOptions = {}): Promise<unknown> {
     if (!this._capabilities.sampling) {
-      throw new McpError(400, "Client does not support sampling");
+      throw new McpError(ErrorCode.MissingClientCapability, "Client does not support sampling");
     }
     const rid = this._pending.nextId();
     const future = this._pending.create(rid);
@@ -164,14 +170,19 @@ export class Context {
   ): Promise<unknown> {
     return withTimeout(future, timeout, () => {
       this._pending.discard(rid);
-      return new McpError(408, `${label} request timed out`);
+      return new McpError(ErrorCode.RequestTimeout, `${label} request timed out`);
     });
   }
 
-  /** Ask the client for its registered root URIs. */
+  /**
+   * Ask the client for its registered root URIs.
+   *
+   * @deprecated Roots is deprecated in MCP 2026-07-28 (removal no earlier than
+   * 2027-07-28). Take directories or files as tool arguments instead.
+   */
   async listRoots(opts: ReplyOptions = {}): Promise<Array<{ uri: string; name: string }>> {
     if (!this._capabilities.roots) {
-      throw new McpError(400, "Client does not support roots");
+      throw new McpError(ErrorCode.MissingClientCapability, "Client does not support roots");
     }
     const rid = this._pending.nextId();
     const future = this._pending.create(rid);
@@ -193,7 +204,7 @@ export class Context {
     opts: ReplyOptions = {},
   ): Promise<{ action: string; content: string }> {
     if (!this._capabilities.elicitation) {
-      throw new McpError(400, "Client does not support elicitation");
+      throw new McpError(ErrorCode.MissingClientCapability, "Client does not support elicitation");
     }
     const rid = this._pending.nextId();
     const future = this._pending.create(rid);

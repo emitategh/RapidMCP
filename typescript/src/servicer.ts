@@ -15,7 +15,7 @@ import {
   ClientNotification_Type,
   type McpServiceImplementation,
 } from "../generated/mcp.js";
-import { McpError } from "./errors.js";
+import { ErrorCode, McpError } from "./errors.js";
 import { AsyncQueue, PendingRequests } from "./session.js";
 import { Context } from "./context.js";
 import { paginate } from "./_utils.js";
@@ -400,7 +400,7 @@ export class McpServicer implements McpServiceImplementation {
 
       const tool = this._toolManager.getTool(name);
       if (!tool) {
-        throw new McpError(404, `Tool '${name}' not found`);
+        throw new McpError(ErrorCode.InvalidParams, `Tool '${name}' not found`);
       }
 
       // Build context for tools that need it
@@ -430,9 +430,8 @@ export class McpServicer implements McpServiceImplementation {
         inputSchema,
       });
 
-      if (signal.aborted) {
-        throw new McpError(499, "Tool call cancelled");
-      }
+      // No response for a cancelled call: the client has stopped waiting for it.
+      if (signal.aborted) return;
 
       writeQueue.enqueue({
         requestId: rid,
@@ -445,6 +444,7 @@ export class McpServicer implements McpServiceImplementation {
         },
       });
     } catch (err) {
+      if (signal.aborted) return;
       this._enqueueError(writeQueue, rid, err);
     }
   }
@@ -469,7 +469,7 @@ export class McpServicer implements McpServiceImplementation {
     rid: bigint,
     err: unknown,
   ): void {
-    const code = err instanceof McpError ? err.code : -32603;
+    const code = err instanceof McpError ? err.code : ErrorCode.InternalError;
     const message = err instanceof Error ? err.message : String(err);
     writeQueue.enqueue({
       requestId: rid,
