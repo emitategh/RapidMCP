@@ -364,6 +364,8 @@ export class McpServicer implements McpServiceImplementation {
       // Stream error — reject all pending requests
       pending.rejectAll(err instanceof Error ? err : new Error(String(err)));
     } finally {
+      // Nobody is left to receive results — tell in-flight tools to stop.
+      for (const controller of toolCalls.values()) controller.abort();
       // Signal the writer to stop
       writeQueue.enqueue(null);
     }

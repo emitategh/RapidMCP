@@ -67,6 +67,12 @@ export class Client {
   private _serverInfo: ServerInfo | null = null;
   private _refCount = 0;
   private _connected = false;
+  /** True while a reader loop is consuming the current stream. */
+  private _streamOpen = false;
+  /** In-flight connect(), shared by concurrent callers. */
+  private _connecting: Promise<void> | null = null;
+  /** Bumped per connection so a stale reader loop cannot touch a newer one. */
+  private _generation = 0;
 
   private _samplingHandler: ((req: SamplingRequest) => Promise<SamplingResponse>) | null = null;
   private _elicitationHandler: ((req: ElicitationRequest) => Promise<ElicitationResponse>) | null = null;
@@ -91,6 +97,20 @@ export class Client {
   /** Connect to the server: open channel, start bidi stream, run initialize handshake. */
   async connect(): Promise<void> {
     if (this._connected) return;
+    if (!this._connecting) {
+      this._connecting = this._doConnect().finally(() => {
+        this._connecting = null;
+      });
+    }
+    return this._connecting;
+  }
+
+  private async _doConnect(): Promise<void> {
+    // Drop whatever a previous, now-dead connection left behind.
+    this._channel?.close();
+    this._pending.rejectAll(new McpError(503, "Connection closed"));
+    this._sendQueue = new AsyncQueue<DeepPartial<ClientEnvelope> | null>();
+    const generation = ++this._generation;
 
     const credentials = buildChannelCredentials(this._opts);
     this._channel = createChannel(this._target, credentials);
@@ -116,7 +136,8 @@ export class Client {
     const responseStream = grpcClient.session(requestIterable() as any, callOpts);
 
     // Start reader loop
-    this._readerDone = this._readLoop(responseStream);
+    this._streamOpen = true;
+    this._readerDone = this._readLoop(responseStream, generation);
 
     // Initialize handshake
     const initResponse = (await this._request({
@@ -155,7 +176,7 @@ export class Client {
   }
 
   /** Reader loop — dispatches incoming server envelopes. */
-  private async _readLoop(stream: AsyncIterable<ServerEnvelope>): Promise<void> {
+  private async _readLoop(stream: AsyncIterable<ServerEnvelope>, generation: number): Promise<void> {
     try {
       for await (const envelope of stream) {
         const msg = envelope.message;
@@ -174,8 +195,11 @@ export class Client {
           case "notification": {
             const notif = msg.notification;
             const typeName = NOTIFICATION_TYPE_MAP[notif.type] ?? "unknown";
-            // Fire-and-forget — don't block reader
-            void this._notifications.dispatch(typeName, notif.payload);
+            // Fire-and-forget — don't block reader. A throwing handler must not
+            // surface as an unhandled rejection (which kills the process).
+            this._notifications.dispatch(typeName, notif.payload).catch((err) => {
+              console.error(`[rapidmcp] notification handler for '${typeName}' failed:`, err);
+            });
             break;
           }
 
@@ -248,9 +272,16 @@ export class Client {
       }
     } catch (err) {
       // Stream error — reject all pending requests
-      this._pending.rejectAll(
-        err instanceof Error ? err : new Error(String(err)),
-      );
+      if (generation === this._generation) {
+        this._pending.rejectAll(err instanceof Error ? err : new Error(String(err)));
+      }
+    } finally {
+      // The stream is over, however it ended: nothing will answer from here on.
+      if (generation === this._generation) {
+        this._streamOpen = false;
+        this._connected = false;
+        this._pending.rejectAll(new McpError(503, "Connection closed"));
+      }
     }
   }
 
@@ -264,10 +295,18 @@ export class Client {
     });
   }
 
+  /** Fail now rather than at the request timeout when nothing is reading replies. */
+  private _assertStreamOpen(): void {
+    if (!this._streamOpen) {
+      throw new McpError(503, `Not connected to ${this._target}`);
+    }
+  }
+
   /** Send a request envelope and wait for the correlated response. */
   private async _request(
     envelope: Omit<DeepPartial<ClientEnvelope>, "requestId">,
   ): Promise<unknown> {
+    this._assertStreamOpen();
     const requestId = this._pending.nextId();
     const promise = this._pending.create(requestId);
 
@@ -311,6 +350,7 @@ export class Client {
     if (opts?.signal?.aborted) {
       throw new McpError(-1, "Aborted");
     }
+    this._assertStreamOpen();
 
     const requestId = this._pending.nextId();
     const promise = this._pending.create(requestId);
