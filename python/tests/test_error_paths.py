@@ -84,6 +84,38 @@ async def test_session_survives_completion_handler_exception(server):
         assert result.content[0].text == "still here"
 
 
+async def test_in_flight_tool_is_cancelled_when_client_disconnects():
+    srv = RapidMCP(name="disconnect", version="0.1")
+    started = asyncio.Event()
+    finished: list[str] = []
+
+    @srv.tool()
+    async def slow() -> str:
+        started.set()
+        await asyncio.sleep(0.5)
+        finished.append("finished")
+        return "done"
+
+    async with srv:
+        client = Client(f"localhost:{srv.port}")
+        await client.connect()
+        call = asyncio.create_task(client.call_tool("slow"))
+        await asyncio.wait_for(started.wait(), timeout=_PROMPT)
+
+        await client.close()
+        call.cancel()
+        await asyncio.sleep(0.8)  # longer than the tool would need to finish
+
+        assert finished == []
+
+
+async def test_prompt_text_is_returned_as_a_user_message(server):
+    async with Client(f"localhost:{server.port}") as client:
+        result = await asyncio.wait_for(client.get_prompt("greet", {"name": "Ada"}), _PROMPT)
+
+    assert [(m.role, m.content.text) for m in result.messages] == [("user", "hi Ada")]
+
+
 async def test_request_after_stream_died_fails_fast():
     srv = RapidMCP(name="short-lived", version="0.1")
     client = None

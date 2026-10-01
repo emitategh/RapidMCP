@@ -168,7 +168,7 @@ Expected:
 ```json
 {
   "name": "greet",
-  "messages": [{"role": "assistant", "text": "Dear Alice, I hope this message finds you well."}]
+  "messages": [{"role": "user", "text": "Dear Alice, I hope this message finds you well."}]
 }
 ```
 
@@ -182,7 +182,7 @@ Expected:
 ```json
 {
   "name": "greet",
-  "messages": [{"role": "assistant", "text": "Ahoy, Alice! Shiver me timbers!"}]
+  "messages": [{"role": "user", "text": "Ahoy, Alice! Shiver me timbers!"}]
 }
 ```
 

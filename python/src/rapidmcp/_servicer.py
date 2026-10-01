@@ -383,7 +383,7 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                         get_prompt=mcp_pb2.GetPromptResponse(
                             messages=[
                                 mcp_pb2.PromptMessage(
-                                    role="assistant",
+                                    role="user",
                                     content=mcp_pb2.ContentItem(type="text", text=text),
                                 )
                             ],
@@ -528,6 +528,11 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
             logger.debug("session %s closed after %.1fs", sid, elapsed_s)
             read_task.cancel()
             write_task.cancel()
+            # Nobody is left to receive results: stop in-flight tools and release
+            # anything waiting on a sampling/elicitation reply from this client.
+            for task in list(_tool_tasks.values()):
+                task.cancel()
+            server_pending.cancel_all()
             try:
                 self._server._session_queues.remove(write_queue)
             except ValueError:
