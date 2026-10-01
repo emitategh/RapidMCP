@@ -1,0 +1,186 @@
+syntax = "proto3";
+package mcp.v2;
+
+// RapidMCP protocol v2 — MCP 2026-07-28 semantics over gRPC.
+// Stateless: every request carries its own RequestMeta; nothing is inferred
+// from earlier requests on the same connection.
+service Mcp {
+  rpc Discover(DiscoverRequest) returns (DiscoverResult);
+  rpc ListTools(ListToolsRequest) returns (ListToolsResult);
+  rpc ListResources(ListResourcesRequest) returns (ListResourcesResult);
+  rpc ListResourceTemplates(ListResourceTemplatesRequest) returns (ListResourceTemplatesResult);
+  rpc ListPrompts(ListPromptsRequest) returns (ListPromptsResult);
+  rpc Complete(CompleteRequest) returns (CompleteResult);
+}
+
+// ── Per-request / per-result metadata ─────────────────────────────────────
+
+message Implementation {
+  string name    = 1;
+  string version = 2;
+}
+
+message ElicitationCapability {
+  bool form = 1;
+  bool url  = 2;
+}
+
+message ClientCapabilities {
+  ElicitationCapability elicitation = 1;  // unset = not supported
+  map<string, string> extensions = 15;    // extension id -> settings as JSON text
+}
+
+message RequestMeta {
+  string protocol_version                = 1;  // required, e.g. "2026-07-28"
+  ClientCapabilities client_capabilities = 2;  // required
+  Implementation client_info             = 3;
+  optional string log_level              = 4;  // opt in to log messages for this request
+  optional string progress_token         = 5;  // opt in to progress for this request
+}
+
+message ResultMeta {
+  Implementation server_info = 1;
+}
+
+enum CacheScope {
+  CACHE_SCOPE_PRIVATE = 0;
+  CACHE_SCOPE_PUBLIC  = 1;
+}
+
+message CacheHint {
+  uint64 ttl_ms    = 1;  // 0 = immediately stale
+  CacheScope scope = 2;
+}
+
+// Carried in the `mcp-error-data-bin` trailing metadata of a failed RPC.
+message ErrorData {
+  repeated string supported_versions    = 1;  // for -32022
+  string requested_version              = 2;  // for -32022
+  repeated string required_capabilities = 3;  // for -32021
+}
+
+// ── Discovery ─────────────────────────────────────────────────────────────
+
+message ToolsCapability     { bool list_changed = 1; }
+message ResourcesCapability { bool list_changed = 1; bool subscribe = 2; }
+message PromptsCapability   { bool list_changed = 1; }
+
+message ServerCapabilities {
+  ToolsCapability tools         = 1;  // unset = no tools
+  ResourcesCapability resources = 2;  // unset = no resources
+  PromptsCapability prompts     = 3;  // unset = no prompts
+  bool logging                  = 4;
+  map<string, string> extensions = 15;
+}
+
+message DiscoverRequest { RequestMeta meta = 1; }
+
+message DiscoverResult {
+  ResultMeta meta                    = 1;
+  repeated string supported_versions = 2;
+  ServerCapabilities capabilities    = 3;
+  string instructions                = 4;
+  CacheHint cache                    = 5;
+}
+
+// ── Tools ─────────────────────────────────────────────────────────────────
+
+message ToolAnnotations {
+  string title                   = 1;
+  optional bool read_only_hint   = 2;
+  optional bool destructive_hint = 3;
+  optional bool idempotent_hint  = 4;
+  optional bool open_world_hint  = 5;
+}
+
+message Tool {
+  string name                 = 1;
+  string description          = 2;
+  string input_schema         = 3;  // JSON Schema as JSON text
+  string output_schema        = 4;  // JSON Schema as JSON text, empty = none
+  ToolAnnotations annotations = 5;  // unset = no annotations
+}
+
+message ListToolsRequest { RequestMeta meta = 1; string cursor = 2; }
+
+message ListToolsResult {
+  ResultMeta meta     = 1;
+  repeated Tool tools = 2;
+  string next_cursor  = 3;
+  CacheHint cache     = 4;
+}
+
+// ── Resources ─────────────────────────────────────────────────────────────
+
+message Resource {
+  string uri         = 1;
+  string name        = 2;
+  string description = 3;
+  string mime_type   = 4;
+}
+
+message ListResourcesRequest { RequestMeta meta = 1; string cursor = 2; }
+
+message ListResourcesResult {
+  ResultMeta meta             = 1;
+  repeated Resource resources = 2;
+  string next_cursor          = 3;
+  CacheHint cache             = 4;
+}
+
+message ResourceTemplate {
+  string uri_template = 1;
+  string name         = 2;
+  string description  = 3;
+  string mime_type    = 4;
+}
+
+message ListResourceTemplatesRequest { RequestMeta meta = 1; string cursor = 2; }
+
+message ListResourceTemplatesResult {
+  ResultMeta meta                     = 1;
+  repeated ResourceTemplate templates = 2;
+  string next_cursor                  = 3;
+  CacheHint cache                     = 4;
+}
+
+// ── Prompts ───────────────────────────────────────────────────────────────
+
+message PromptArgument {
+  string name        = 1;
+  string description = 2;
+  bool required      = 3;
+}
+
+message Prompt {
+  string name                       = 1;
+  string description                = 2;
+  repeated PromptArgument arguments = 3;
+}
+
+message ListPromptsRequest { RequestMeta meta = 1; string cursor = 2; }
+
+message ListPromptsResult {
+  ResultMeta meta         = 1;
+  repeated Prompt prompts = 2;
+  string next_cursor      = 3;
+  CacheHint cache         = 4;
+}
+
+// ── Completion ────────────────────────────────────────────────────────────
+
+message CompletionRef { string type = 1; string name = 2; }
+message CompletionArg { string name = 1; string value = 2; }
+
+message CompleteRequest {
+  RequestMeta meta       = 1;
+  CompletionRef ref      = 2;
+  CompletionArg argument = 3;
+}
+
+message CompleteResult {
+  ResultMeta meta        = 1;
+  repeated string values = 2;
+  bool has_more          = 3;
+  int32 total            = 4;
+}
