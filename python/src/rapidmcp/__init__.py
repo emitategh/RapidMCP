@@ -1,13 +1,6 @@
 """rapidmcp: gRPC-native MCP (Model Context Protocol) library."""
 
-from importlib.metadata import PackageNotFoundError
-from importlib.metadata import version as _package_version
-
-try:
-    __version__ = _package_version("rapidmcp")
-except PackageNotFoundError:  # running from a source tree that was never installed
-    __version__ = "0.0.0+unknown"
-
+from rapidmcp._version import __version__
 from rapidmcp.auth import ClientTLSConfig, TLSConfig
 from rapidmcp.client import Client
 from rapidmcp.content import Audio, Image
@@ -88,5 +81,6 @@ __all__ = [
     "ToolCallContext",
     "ToolError",
     "ValidationMiddleware",
+    "__version__",
     "build_elicitation_schema",
 ]

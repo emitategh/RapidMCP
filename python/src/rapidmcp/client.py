@@ -12,8 +12,15 @@ import grpc
 from grpc import aio as grpc_aio
 
 from rapidmcp._generated import mcp_pb2, mcp_pb2_grpc
+from rapidmcp._v2_client import _V2Transport, is_v2_missing
 from rapidmcp.auth import ClientTLSConfig, _build_channel_credentials
-from rapidmcp.errors import NOT_CONNECTED, REQUEST_CANCELLED, REQUEST_TIMEOUT, McpError
+from rapidmcp.errors import (
+    METHOD_NOT_FOUND,
+    NOT_CONNECTED,
+    REQUEST_CANCELLED,
+    REQUEST_TIMEOUT,
+    McpError,
+)
 from rapidmcp.session import NotificationRegistry, PendingRequests
 from rapidmcp.types import (
     CallToolResult,
@@ -52,7 +59,12 @@ class Client:
         token: str | None = None,
         tls: ClientTLSConfig | None = None,
         request_timeout: float = 30.0,
+        mode: Literal["legacy", "modern", "auto"] = "legacy",
     ) -> None:
+        if mode not in ("legacy", "modern", "auto"):
+            raise ValueError(f"mode must be 'legacy', 'modern' or 'auto', not {mode!r}")
+        self._mode = mode
+        self._v2: _V2Transport | None = None
         self._target = target
         self._request_timeout = request_timeout
         self._metadata = [("authorization", f"Bearer {token}")] if token is not None else []
@@ -80,8 +92,17 @@ class Client:
         self._roots_handler = handler
 
     @property
+    def protocol(self) -> str | None:
+        """``"v2"`` or ``"v1"`` once connected, ``None`` before."""
+        if self._v2 is not None:
+            return "v2"
+        return "v1" if self._reader_task is not None else None
+
+    @property
     def is_connected(self) -> bool:
-        """True when a live gRPC channel and reader loop are active."""
+        """True when a live gRPC channel (and, on v1, its reader loop) is active."""
+        if self._v2 is not None:
+            return self._channel is not None
         return (
             self._channel is not None
             and self._reader_task is not None
@@ -89,22 +110,45 @@ class Client:
         )
 
     async def connect(self) -> None:
-        logger.debug("connecting to %s", self._target)
+        logger.debug("connecting to %s (mode=%s)", self._target, self._mode)
         if self._tls:
             self._channel = grpc_aio.secure_channel(
                 self._target, _build_channel_credentials(self._tls)
             )
         else:
             self._channel = grpc_aio.insecure_channel(self._target)
-        stub = mcp_pb2_grpc.McpStub(self._channel)
-        self._write_queue: asyncio.Queue[mcp_pb2.ClientEnvelope] = asyncio.Queue()
-        self._stream = stub.Session(self._outbound_iter(), metadata=self._metadata)
-        self._reader_task = asyncio.create_task(self._reader_loop())
         try:
-            await self._initialize()
+            if self._mode != "legacy" and await self._connect_v2():
+                return
+            await self._connect_v1()
         except BaseException:
             await self.close()  # don't leave the channel and reader task behind
             raise
+
+    async def _connect_v2(self) -> bool:
+        """Try the v2 service. False means "old server, use v1" (auto mode only)."""
+        transport = _V2Transport(
+            self._channel,
+            self._metadata,
+            self._request_timeout,
+            supports_elicitation=lambda: self._elicitation_handler is not None,
+        )
+        try:
+            self.server_info = await transport.discover()
+        except grpc_aio.AioRpcError as exc:
+            if self._mode == "auto" and is_v2_missing(exc):
+                logger.debug("%s does not serve v2; falling back to v1", self._target)
+                return False
+            raise
+        self._v2 = transport
+        return True
+
+    async def _connect_v1(self) -> None:
+        stub = mcp_pb2_grpc.McpStub(self._channel)
+        self._write_queue = asyncio.Queue()
+        self._stream = stub.Session(self._outbound_iter(), metadata=self._metadata)
+        self._reader_task = asyncio.create_task(self._reader_loop())
+        await self._initialize()
         logger.debug(
             "connected to %s  server=%s %s",
             self._target,
@@ -154,6 +198,14 @@ class Client:
         elapsed_ms = (time.monotonic() - t0) * 1000
         logger.debug("← %s rid=%d %.1fms", msg_type, rid, elapsed_ms)
         return result
+
+    def _v1_only(self, operation: str) -> None:
+        """Raise for operations the v2 protocol does not carry yet."""
+        if self._v2 is not None:
+            raise McpError(
+                METHOD_NOT_FOUND,
+                f"{operation} is not available on the v2 protocol yet; use mode='legacy'",
+            )
 
     async def _reader_loop(self) -> None:
         logger.debug("reader loop started for %s", self._target)
@@ -273,6 +325,8 @@ class Client:
     # ------------------------------------------------------------------
 
     async def list_tools(self, cursor: str | None = None) -> ListResult:
+        if self._v2 is not None:
+            return await self._v2.list_tools(cursor)
         env = mcp_pb2.ClientEnvelope(list_tools=mcp_pb2.ListToolsRequest(cursor=cursor or ""))
         resp = await self._request(env)
         return ListResult(
@@ -284,6 +338,7 @@ class Client:
         self, name: str, arguments: dict | None = None, *, timeout: float | None = None
     ) -> CallToolResult:
         """Call a tool. *timeout* (seconds) overrides the client's ``request_timeout``."""
+        self._v1_only("call_tool")
         env = mcp_pb2.ClientEnvelope(
             call_tool=mcp_pb2.CallToolRequest(
                 name=name,
@@ -294,6 +349,8 @@ class Client:
         return _convert_call_tool_result(resp)
 
     async def list_resources(self, cursor: str | None = None) -> ListResult:
+        if self._v2 is not None:
+            return await self._v2.list_resources(cursor)
         env = mcp_pb2.ClientEnvelope(
             list_resources=mcp_pb2.ListResourcesRequest(cursor=cursor or "")
         )
@@ -304,6 +361,7 @@ class Client:
         )
 
     async def read_resource(self, uri: str) -> ReadResourceResult:
+        self._v1_only("read_resource")
         env = mcp_pb2.ClientEnvelope(
             read_resource=mcp_pb2.ReadResourceRequest(uri=uri),
         )
@@ -312,6 +370,7 @@ class Client:
 
     async def subscribe_resource(self, uri: str) -> None:
         """Subscribe to updates for a specific resource URI."""
+        self._v1_only("subscribe_resource")
         await self._send(
             mcp_pb2.ClientEnvelope(
                 request_id=0,
@@ -320,6 +379,8 @@ class Client:
         )
 
     async def list_prompts(self, cursor: str | None = None) -> ListResult:
+        if self._v2 is not None:
+            return await self._v2.list_prompts(cursor)
         env = mcp_pb2.ClientEnvelope(list_prompts=mcp_pb2.ListPromptsRequest(cursor=cursor or ""))
         resp = await self._request(env)
         return ListResult(
@@ -330,6 +391,7 @@ class Client:
     async def get_prompt(
         self, name: str, arguments: dict[str, str] | None = None
     ) -> GetPromptResult:
+        self._v1_only("get_prompt")
         env = mcp_pb2.ClientEnvelope(
             get_prompt=mcp_pb2.GetPromptRequest(name=name, arguments=arguments or {}),
         )
@@ -337,6 +399,8 @@ class Client:
         return _convert_get_prompt_result(resp)
 
     async def list_resource_templates(self, cursor: str | None = None) -> ListResult:
+        if self._v2 is not None:
+            return await self._v2.list_resource_templates(cursor)
         env = mcp_pb2.ClientEnvelope(
             list_resource_templates=mcp_pb2.ListResourceTemplatesRequest(
                 cursor=cursor or "",
@@ -355,6 +419,8 @@ class Client:
         argument_name: str,
         value: str,
     ) -> CompleteResult:
+        if self._v2 is not None:
+            return await self._v2.complete(ref_type, ref_name, argument_name, value)
         env = mcp_pb2.ClientEnvelope(
             complete=mcp_pb2.CompleteRequest(
                 ref=mcp_pb2.CompletionRef(type=ref_type, name=ref_name),
@@ -369,6 +435,9 @@ class Client:
 
     async def ping(self) -> bool:
         """Ping the server. Returns True on success, raises McpError on failure."""
+        if self._v2 is not None:
+            await self._v2.discover()
+            return True
         env = mcp_pb2.ClientEnvelope(ping=mcp_pb2.PingRequest())
         await self._request(env)
         return True
@@ -379,6 +448,7 @@ class Client:
         The pending call fails here with ``McpError(499)``; the server sends no
         response for a cancelled request.
         """
+        self._v1_only("cancel")
         self._pending.reject(target_request_id, McpError(REQUEST_CANCELLED, "Request cancelled"))
         await self._send(
             mcp_pb2.ClientEnvelope(
@@ -388,6 +458,7 @@ class Client:
         )
 
     async def notify_roots_list_changed(self) -> None:
+        self._v1_only("notify_roots_list_changed")
         await self._send(
             mcp_pb2.ClientEnvelope(
                 request_id=0,
@@ -414,6 +485,7 @@ class Client:
         if self._channel:
             await self._channel.close()
             self._channel = None
+        self._v2 = None
         self._ref_count = 0
         logger.debug("closed connection to %s", self._target)
 

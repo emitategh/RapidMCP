@@ -269,3 +269,29 @@ def _convert_complete_result(p) -> CompleteResult:
         has_more=p.has_more,
         total=p.total,
     )
+
+
+def _convert_tool_v2(p) -> Tool:
+    """Like ``_convert_tool`` for a v2 ``Tool``, whose hints may be unset.
+
+    An unset hint takes MCP's default: not read-only, destructive,
+    not idempotent, open-world.
+    """
+    a = p.annotations
+
+    def hint(name: str, default: bool) -> bool:
+        return getattr(a, name) if a.HasField(name) else default
+
+    return Tool(
+        name=p.name,
+        description=p.description,
+        input_schema=json.loads(p.input_schema) if p.input_schema else {},
+        output_schema=json.loads(p.output_schema) if p.output_schema else None,
+        annotations=ToolAnnotationInfo(
+            title=a.title,
+            read_only_hint=hint("read_only_hint", False),
+            destructive_hint=hint("destructive_hint", True),
+            idempotent_hint=hint("idempotent_hint", False),
+            open_world_hint=hint("open_world_hint", True),
+        ),
+    )
