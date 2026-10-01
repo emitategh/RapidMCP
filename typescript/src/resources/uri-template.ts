@@ -36,6 +36,19 @@ function decode(value: string): string | null {
   }
 }
 
+/**
+ * Reject values that would let a URI reach outside what the template names.
+ * `{var}` promises one path segment, so a decoded separator (`%2F`, `%5C`)
+ * must not turn it into several. No variable, wildcard included, may contain
+ * a `.` / `..` segment or a NUL byte.
+ */
+function isSafeValue(value: string, singleSegment: boolean): boolean {
+  if (value.includes("\0")) return false;
+  const segments = value.split(/[/\\]/);
+  if (singleSegment && segments.length > 1) return false;
+  return !segments.some((segment) => segment === "." || segment === "..");
+}
+
 export function matchUriTemplate(uri: string, uriTemplate: string): Record<string, string> | null {
   const queryStart = uri.indexOf("?");
   const uriPath = queryStart === -1 ? uri : uri.slice(0, queryStart);
@@ -50,9 +63,7 @@ export function matchUriTemplate(uri: string, uriTemplate: string): Record<strin
   const params: Record<string, string> = {};
   for (const [name, raw] of Object.entries(match.groups ?? {})) {
     const value = decode(raw);
-    // `{var}` promises a single path segment; an encoded slash must not turn
-    // it into several (`..%2F..%2Fsecret` -> `../../secret`).
-    if (value === null || (!wildcards.has(name) && value.includes("/"))) return null;
+    if (value === null || !isSafeValue(value, !wildcards.has(name))) return null;
     params[name] = value;
   }
 

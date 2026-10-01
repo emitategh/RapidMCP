@@ -50,4 +50,28 @@ describe("matchUriTemplate", () => {
       limit: "5",
     });
   });
+
+  it("does not let an encoded backslash smuggle segments into a single variable", () => {
+    expect(matchUriTemplate("res://files/..%5C..%5Csecret", "res://files/{name}")).toBeNull();
+  });
+
+  it("does not accept dot segments as a single variable", () => {
+    expect(matchUriTemplate("res://files/..", "res://files/{name}")).toBeNull();
+    expect(matchUriTemplate("res://files/.", "res://files/{name}")).toBeNull();
+  });
+
+  it("rejects parent segments in a wildcard variable", () => {
+    expect(matchUriTemplate("res://files/a/../../etc", "res://files/{path*}")).toBeNull();
+    expect(matchUriTemplate("res://files/a%2F..%2Fb", "res://files/{path*}")).toBeNull();
+  });
+
+  it("rejects NUL bytes", () => {
+    expect(matchUriTemplate("res://files/a%00.txt", "res://files/{name}")).toBeNull();
+  });
+
+  it("still matches names that merely contain dots", () => {
+    expect(matchUriTemplate("res://files/notes..final.txt", "res://files/{name}")).toEqual({
+      name: "notes..final.txt",
+    });
+  });
 });

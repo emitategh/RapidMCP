@@ -49,6 +49,21 @@ def _build_regex(template: str) -> re.Pattern[str] | None:
         return None
 
 
+def _is_safe_value(value: str, *, single_segment: bool) -> bool:
+    """Reject values that would let a URI reach outside what the template names.
+
+    ``{var}`` promises one path segment, so a decoded separator (``%2F``,
+    ``%5C``) must not turn it into several. No variable, wildcard included,
+    may contain a ``.`` / ``..`` segment or a NUL byte.
+    """
+    if "\x00" in value:
+        return False
+    segments = re.split(r"[/\\]", value)
+    if single_segment and len(segments) > 1:
+        return False
+    return not any(segment in (".", "..") for segment in segments)
+
+
 def match_uri_template(uri: str, uri_template: str) -> dict[str, str] | None:
     """Match *uri* against *uri_template* and extract parameters.
 
@@ -77,9 +92,7 @@ def match_uri_template(uri: str, uri_template: str) -> dict[str, str] | None:
     params: dict[str, str] = {}
     for name, raw in match.groupdict().items():
         value = unquote(raw)
-        # ``{var}`` promises a single path segment; an encoded slash must not
-        # turn it into several (``..%2F..%2Fsecret`` -> ``../../secret``).
-        if name not in wildcards and "/" in value:
+        if not _is_safe_value(value, single_segment=name not in wildcards):
             return None
         params[name] = value
 

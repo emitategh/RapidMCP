@@ -67,3 +67,27 @@ def test_encoded_slash_is_allowed_in_a_wildcard_variable():
 def test_other_percent_escapes_are_still_decoded():
     result = match_uri_template("res://files/my%20file.txt", "res://files/{name}")
     assert result == {"name": "my file.txt"}
+
+
+def test_encoded_backslash_cannot_smuggle_segments_into_a_single_variable():
+    assert match_uri_template("res://files/..%5C..%5Csecret", "res://files/{name}") is None
+
+
+def test_dot_segments_are_not_a_valid_single_variable():
+    assert match_uri_template("res://files/..", "res://files/{name}") is None
+    assert match_uri_template("res://files/.", "res://files/{name}") is None
+
+
+def test_parent_segments_are_rejected_in_a_wildcard_variable():
+    assert match_uri_template("res://files/a/../../etc", "res://files/{path*}") is None
+    assert match_uri_template("res://files/a%2F..%2Fb", "res://files/{path*}") is None
+
+
+def test_null_bytes_are_rejected():
+    assert match_uri_template("res://files/a%00.txt", "res://files/{name}") is None
+
+
+def test_names_that_merely_contain_dots_still_match():
+    assert match_uri_template("res://files/notes..final.txt", "res://files/{name}") == {
+        "name": "notes..final.txt"
+    }
