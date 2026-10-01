@@ -47,9 +47,14 @@ class Client:
     """
 
     def __init__(
-        self, target: str, token: str | None = None, tls: ClientTLSConfig | None = None
+        self,
+        target: str,
+        token: str | None = None,
+        tls: ClientTLSConfig | None = None,
+        request_timeout: float = 30.0,
     ) -> None:
         self._target = target
+        self._request_timeout = request_timeout
         self._metadata = [("authorization", f"Bearer {token}")] if token is not None else []
         self._tls = tls
         self._pending = PendingRequests()
@@ -113,9 +118,9 @@ class Client:
     async def _send(self, envelope: mcp_pb2.ClientEnvelope) -> None:
         await self._write_queue.put(envelope)
 
-    _REQUEST_TIMEOUT = 30.0
-
-    async def _request(self, envelope: mcp_pb2.ClientEnvelope) -> Any:
+    async def _request(self, envelope: mcp_pb2.ClientEnvelope, timeout: float | None = None) -> Any:
+        if timeout is None:
+            timeout = self._request_timeout
         if self._reader_task is None or self._reader_task.done():
             # Nothing is reading replies any more — fail now instead of at the timeout.
             raise McpError(503, f"Not connected to {self._target}")
@@ -127,16 +132,20 @@ class Client:
         t0 = time.monotonic()
         await self._send(envelope)
         try:
-            result = await asyncio.wait_for(future, timeout=self._REQUEST_TIMEOUT)
+            result = await asyncio.wait_for(future, timeout=timeout)
         except asyncio.TimeoutError:
             elapsed_ms = (time.monotonic() - t0) * 1000
             logger.warning(
-                "request timed out: %s rid=%d after %.0fms (timeout=%.0fs)",
+                "request timed out: %s rid=%d after %.0fms (timeout=%.1fs)",
                 msg_type,
                 rid,
                 elapsed_ms,
-                self._REQUEST_TIMEOUT,
+                timeout,
             )
+            self._pending.discard(rid)
+            if msg_type == "call_tool":
+                # We stopped waiting — don't leave the tool running on the server.
+                await self.cancel(rid)
             raise McpError(408, f"Request timed out: {msg_type} rid={rid}") from None
         elapsed_ms = (time.monotonic() - t0) * 1000
         logger.debug("← %s rid=%d %.1fms", msg_type, rid, elapsed_ms)
@@ -267,14 +276,17 @@ class Client:
             next_cursor=resp.next_cursor or None,
         )
 
-    async def call_tool(self, name: str, arguments: dict | None = None) -> CallToolResult:
+    async def call_tool(
+        self, name: str, arguments: dict | None = None, *, timeout: float | None = None
+    ) -> CallToolResult:
+        """Call a tool. *timeout* (seconds) overrides the client's ``request_timeout``."""
         env = mcp_pb2.ClientEnvelope(
             call_tool=mcp_pb2.CallToolRequest(
                 name=name,
                 arguments=json.dumps(arguments or {}),
             ),
         )
-        resp = await self._request(env)
+        resp = await self._request(env, timeout=timeout)
         return _convert_call_tool_result(resp)
 
     async def list_resources(self, cursor: str | None = None) -> ListResult:

@@ -34,6 +34,10 @@ class PendingRequests:
         if future and not future.done():
             future.set_exception(error)
 
+    def discard(self, request_id: int) -> None:
+        """Forget a request nobody is waiting on any more (e.g. after a timeout)."""
+        self._pending.pop(request_id, None)
+
     def cancel_all(self) -> None:
         for future in self._pending.values():
             if not future.done():

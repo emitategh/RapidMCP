@@ -26,6 +26,12 @@ class Context:
         self._pending = pending
         self._write_queue = write_queue
 
+    async def _await_reply(self, rid: int, future: asyncio.Future, timeout: float | None):
+        try:
+            return await asyncio.wait_for(future, timeout=timeout)
+        finally:
+            self._pending.discard(rid)
+
     async def sample(
         self,
         messages: list,
@@ -34,6 +40,7 @@ class Context:
         model_preferences: dict | mcp_pb2.ModelPreferences | None = None,
         tools: list | None = None,
         tool_choice: str = "",
+        timeout: float | None = _DEFAULT_TIMEOUT,
     ) -> mcp_pb2.SamplingResponse:
         """Request LLM completion from the client.
 
@@ -51,6 +58,8 @@ class Context:
                 ``name``, ``description``, and ``input_schema`` keys.
             tool_choice: How the model may use tools — ``"auto"``,
                 ``"required"``, ``"none"``, or ``""`` (server default).
+            timeout: Seconds to wait for the client's reply; ``None`` waits
+                indefinitely. Raises ``asyncio.TimeoutError`` when exceeded.
         """
         if not self._capabilities.sampling:
             raise McpError(400, "Client does not support sampling")
@@ -134,13 +143,14 @@ class Context:
 
         envelope = mcp_pb2.ServerEnvelope(request_id=rid, sampling=req)
         await self._write_queue.put(envelope)
-        return await asyncio.wait_for(future, timeout=_DEFAULT_TIMEOUT)
+        return await self._await_reply(rid, future, timeout)
 
     async def elicit(
         self,
         message: str,
         schema: str | None = None,
         fields: dict | None = None,
+        timeout: float | None = _DEFAULT_TIMEOUT,
     ) -> ElicitationResult:
         """Request user input from the client.
 
@@ -152,6 +162,8 @@ class Context:
                 (``StringField``, ``BoolField``, ``IntField``, ``FloatField``,
                 ``EnumField``).  Automatically serialised to a valid MCP
                 elicitation schema.
+            timeout: Seconds to wait for the user's answer; ``None`` waits
+                indefinitely. Raises ``asyncio.TimeoutError`` when exceeded.
 
         Returns:
             An :class:`ElicitationResult` with ``action`` (``"accept"``,
@@ -175,7 +187,7 @@ class Context:
             ),
         )
         await self._write_queue.put(envelope)
-        raw: mcp_pb2.ElicitationResponse = await asyncio.wait_for(future, timeout=_DEFAULT_TIMEOUT)
+        raw: mcp_pb2.ElicitationResponse = await self._await_reply(rid, future, timeout)
         data: dict = {}
         if raw.content:
             try:
@@ -225,7 +237,9 @@ class Context:
             )
         )
 
-    async def list_roots(self) -> mcp_pb2.ListRootsResponse:
+    async def list_roots(
+        self, timeout: float | None = _DEFAULT_TIMEOUT
+    ) -> mcp_pb2.ListRootsResponse:
         """Request the client's registered root URIs."""
         if not self._capabilities.roots:
             raise McpError(400, "Client does not support roots")
@@ -237,4 +251,4 @@ class Context:
                 roots_request=mcp_pb2.ListRootsRequest(),
             )
         )
-        return await asyncio.wait_for(future, timeout=_DEFAULT_TIMEOUT)
+        return await self._await_reply(rid, future, timeout)
