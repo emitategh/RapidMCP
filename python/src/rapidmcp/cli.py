@@ -139,7 +139,7 @@ def cmd_run(args: argparse.Namespace) -> None:
 
     port: int = args.port
     print(f"Starting RapidMCP '{server.name}' on port {port} …", flush=True)
-    server.run(port=port)
+    server.run(port=port, host=args.host)
 
 
 def cmd_version(_args: argparse.Namespace) -> None:
@@ -182,6 +182,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default=50051,
         metavar="PORT",
         help="gRPC port to listen on (default: 50051).",
+    )
+    run_p.add_argument(
+        "--host",
+        default=None,
+        metavar="HOST",
+        help="Interface to listen on, e.g. 127.0.0.1 (default: all interfaces).",
     )
     run_p.set_defaults(func=cmd_run)
 

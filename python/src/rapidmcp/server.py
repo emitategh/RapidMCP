@@ -36,7 +36,10 @@ class RapidMCP:
         auth: Callable[[str], bool | Awaitable[bool]] | None = None,
         tls: TLSConfig | None = None,
         mask_error_details: bool = False,
+        host: str | None = None,
     ) -> None:
+        self._host = host
+        self._bound_host = host or "[::]"
         self.name = name
         self.version = version
         self.page_size = page_size
@@ -258,29 +261,31 @@ class RapidMCP:
         args = json.loads(arguments_json) if arguments_json else {}
         return await self._call_tool_with_dict(name, args, context)
 
-    async def _start_grpc(self, port: int) -> grpc_aio.Server:
+    async def _start_grpc(self, port: int, host: str | None = None) -> grpc_aio.Server:
+        host = host or self._host
         interceptors = [_AuthInterceptor(self._auth)] if self._auth else []
-        grpc_server = grpc_aio.server(interceptors=interceptors)
-        mcp_pb2_grpc.add_McpServicer_to_server(_McpServicer(self), grpc_server)
         server_credentials = _build_server_credentials(self._tls) if self._tls else None
-        # Try IPv6 first, fall back to IPv4 on Windows
-        try:
-            if server_credentials:
-                actual_port = grpc_server.add_secure_port(f"[::]:{port}", server_credentials)
-            else:
-                actual_port = grpc_server.add_insecure_port(f"[::]:{port}")
-            await grpc_server.start()
-        except (OSError, RuntimeError) as exc:
-            logger.debug("IPv6 bind failed (%s), falling back to IPv4", exc)
+
+        async def bind(bind_host: str) -> grpc_aio.Server:
             grpc_server = grpc_aio.server(interceptors=interceptors)
             mcp_pb2_grpc.add_McpServicer_to_server(_McpServicer(self), grpc_server)
+            address = f"{bind_host}:{port}"
             if server_credentials:
-                actual_port = grpc_server.add_secure_port(f"127.0.0.1:{port}", server_credentials)
+                self._port = grpc_server.add_secure_port(address, server_credentials)
             else:
-                actual_port = grpc_server.add_insecure_port(f"127.0.0.1:{port}")
+                self._port = grpc_server.add_insecure_port(address)
             await grpc_server.start()
-        self._port = actual_port
-        return grpc_server
+            self._bound_host = bind_host
+            return grpc_server
+
+        if host:
+            return await bind(host)
+        # No host given: all interfaces. Try IPv6 first, fall back to IPv4 on Windows
+        try:
+            return await bind("[::]")
+        except (OSError, RuntimeError) as exc:
+            logger.debug("IPv6 bind failed (%s), falling back to IPv4", exc)
+            return await bind("127.0.0.1")
 
     def _print_banner(self, port: int) -> None:
         from rapidmcp import __version__
@@ -289,7 +294,7 @@ class RapidMCP:
         sub = "█▀  █▀█ ▄█  █  ██▄ █▀▄   █ ▀ █ █▄▄ █▀▀"
         server_line = f"Server:  {self.name}, {self.version}"
         version_line = f"RapidMCP {__version__}"
-        transport_line = f"grpc://0.0.0.0:{port}"
+        transport_line = f"grpc://{self._bound_host}:{port}"
 
         W = 76
 
@@ -316,11 +321,15 @@ class RapidMCP:
         ]
         print("\n" + "\n".join(lines) + "\n", flush=True)
 
-    def run(self, port: int = 50051) -> None:
-        """Blocking entry point — starts the gRPC server."""
+    def run(self, port: int = 50051, host: str | None = None) -> None:
+        """Blocking entry point — starts the gRPC server.
+
+        *host* overrides the constructor's ``host``; with neither set the
+        server listens on all interfaces.
+        """
 
         async def _run():
-            grpc_server = await self._start_grpc(port)
+            grpc_server = await self._start_grpc(port, host)
             self._print_banner(self._port)
             await grpc_server.wait_for_termination()
 
