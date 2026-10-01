@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Python (`rapidmcp`)
 
+### [Unreleased]
+
+### Added
+- Plain `def` handlers for tools, resources and prompts (run in a worker thread)
+- `Client(request_timeout=...)`, `call_tool(..., timeout=...)`, and `timeout=` on `ctx.sample` / `ctx.elicit` / `ctx.list_roots` (`None` waits indefinitely)
+- `RapidMCP(host=...)`, `run(host=...)` and `rapidmcp run --host` (default unchanged: all interfaces)
+- `RapidMCP(mask_error_details=True)`
+
+### Changed
+- **BREAKING**: a failing tool returns `Error calling tool '<name>': <message>` instead of a full traceback; raise `ToolError` to return a message verbatim
+- **BREAKING**: prompt text is returned with role `user` (was `assistant`), matching the TypeScript server and FastMCP
+- **BREAKING**: tool input schemas use real JSON Schema types for `list`, `dict`, unions, `Literal` and `Enum`; unknown or missing annotations yield `{}` (everything non-primitive used to be `"string"`), and `*args` / `**kwargs` are no longer listed
+- Capabilities: `tools_list_changed` is announced, and resource templates count as resources
+- The startup banner prints the address actually bound
+
+### Fixed
+- Tool calls hung until the client timeout when a middleware raised or the arguments were not a JSON object
+- An exception in any message handler (e.g. a completion handler) terminated the whole session
+- Requests issued after the stream died waited the full timeout; they now raise `McpError(503)` immediately
+- Tools kept running after the client disconnected, and after a client-side timeout
+- An encoded slash (`%2F`) could smuggle extra path segments into a single-segment `{var}` URI template variable
+- `ctx.sample()` dropped tool-use and binary fields from dict content items
+- LiveKit adapter listed only the first page of tools
+- `close()` inside `async with` left the client unable to reconnect; a failed `connect()` left the channel and reader task open
+- `__version__` reported a stale `0.1.0`
+
 ### [0.4.0] - 2026-04-20
 
 ### Added
@@ -112,6 +138,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 ## TypeScript (`@emitate/rapidmcp`)
+
+### [Unreleased]
+
+### Added
+- Server-side token auth (`new RapidMCP({ auth })`) and TLS/mTLS (`tls: { cert, key, ca? }`)
+- `mount(sub, { prefix })` — same naming and all-or-nothing collision rules as Python
+- `ctx.signal` — aborted when the client cancels the call, the call times out, or the session ends
+- `ctx.listRoots()`; `ctx.sample()` forwards `tools`, `toolChoice`, `modelPreferences` and tool-use/binary content
+- `onResourceSubscribe()` / `onRootsListChanged()` server handlers
+- Binary resources (`blob` as `Uint8Array` or base64) and tool `outputSchema` (zod or JSON Schema)
+- Per-call `timeout` on `callTool`, and `{ timeout }` on `ctx.sample` / `ctx.elicit` / `ctx.listRoots`
+- `maskErrorDetails` server option
+- `@grpc/grpc-js` is now a declared dependency
+
+### Changed
+- **BREAKING**: a tool that throws a plain `Error` is reported as `Error calling tool '<name>': <message>` (was the bare message); `ToolError` messages are still returned verbatim
+- **BREAKING**: request timeouts reject with `McpError` code `408` (was `-1`)
+- Capabilities reflect what is registered instead of always claiming tools, resources and prompts
+- URI template variables are percent-decoded and `{?a,b}` query parameters are extracted
+
+### Fixed
+- `cancel` did not cancel the tool call and could fail an unrelated sampling/elicitation request sharing the same id; cancelled calls are now answered with error `499`
+- `callTool` with a `signal` caused an unhandled rejection (a process crash by default) whenever the call failed
+- A call whose signal was already aborted was still sent to the server
+- A throwing notification handler caused an unhandled rejection
+- The client did not notice the server going away: `isConnected` stayed true and every request waited for the full timeout; requests now fail at once with `McpError(503)`
+- Reconnecting after a dead stream ended the new stream immediately; concurrent `connect()` / `using()` opened two streams
+- An encoded slash (`%2F`) could smuggle extra path segments into a single-segment `{var}`
+- Finished requests left a live 30s timer and a pending-map entry behind
 
 ### [ts-0.2.0] - 2026-04-20
 
