@@ -143,7 +143,17 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                                 pending=server_pending,
                                 write_queue=write_queue,
                             )
-                        args = json.loads(_req.arguments) if _req.arguments else {}
+                        try:
+                            args = json.loads(_req.arguments) if _req.arguments else {}
+                        except ValueError:
+                            raise McpError(
+                                400, f"Invalid arguments for tool '{_req.name}': not valid JSON"
+                            ) from None
+                        if not isinstance(args, dict):
+                            raise McpError(
+                                400,
+                                f"Invalid arguments for tool '{_req.name}': expected a JSON object",
+                            )
                         result = await self._server._dispatch_tool(_req.name, args, ctx)
                         elapsed_ms = (time.monotonic() - t0) * 1000
                         logger.debug(
@@ -191,6 +201,21 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                             mcp_pb2.ServerEnvelope(
                                 request_id=_rid,
                                 error=mcp_pb2.ErrorResponse(code=e.code, message=e.message),
+                            )
+                        )
+                    except Exception:
+                        logger.exception(
+                            "session %s tool %s failed outside the handler rid=%d",
+                            sid,
+                            _req.name,
+                            _rid,
+                        )
+                        await write_queue.put(
+                            mcp_pb2.ServerEnvelope(
+                                request_id=_rid,
+                                error=mcp_pb2.ErrorResponse(
+                                    code=500, message=f"Tool call '{_req.name}' failed"
+                                ),
                             )
                         )
                     finally:
@@ -460,7 +485,25 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                 if read_task in done:
                     try:
                         envelope = read_task.result()
-                        await _handle_envelope(envelope)
+                        try:
+                            await _handle_envelope(envelope)
+                        except Exception:
+                            # A failing handler must not take the whole session down.
+                            msg_type = envelope.WhichOneof("message")
+                            logger.exception(
+                                "session %s handler for %s raised rid=%d",
+                                sid,
+                                msg_type,
+                                envelope.request_id,
+                            )
+                            await write_queue.put(
+                                mcp_pb2.ServerEnvelope(
+                                    request_id=envelope.request_id,
+                                    error=mcp_pb2.ErrorResponse(
+                                        code=500, message=f"Handler for '{msg_type}' failed"
+                                    ),
+                                )
+                            )
                         read_task = asyncio.ensure_future(request_iterator.__anext__())
                     except StopAsyncIteration:
                         eof = True

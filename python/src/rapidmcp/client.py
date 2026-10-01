@@ -116,6 +116,9 @@ class Client:
     _REQUEST_TIMEOUT = 30.0
 
     async def _request(self, envelope: mcp_pb2.ClientEnvelope) -> Any:
+        if self._reader_task is None or self._reader_task.done():
+            # Nothing is reading replies any more — fail now instead of at the timeout.
+            raise McpError(503, f"Not connected to {self._target}")
         rid = self._pending.next_id()
         envelope.request_id = rid
         msg_type = envelope.WhichOneof("message")
