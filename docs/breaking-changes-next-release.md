@@ -106,6 +106,18 @@ Two related changes:
 **What to change:** `except McpError` blocks and tests that compare `code`
 against `404`, `400` or `500`.
 
+### Annotation hints default to "not set"
+
+`@server.tool(read_only=..., destructive=..., idempotent=..., open_world=...)` and
+`ToolAnnotations` now default every hint to `None` instead of `False`.
+`ToolAnnotations().destructive_hint` is `None`. On the v1 protocol an unset
+hint is still sent as `false`, so v1 clients see no change; on v2 it is left
+unset and the client reports MCP's defaults (destructive and open-world).
+
+**What to change:** code that reads `tool.annotations.<hint> is False` on the
+server side. Pass `destructive=False` explicitly to assert that a tool is not
+destructive.
+
 ### Sampling and roots are deprecated
 
 MCP 2026-07-28 deprecates Sampling and Roots (removal no earlier than
@@ -119,9 +131,10 @@ directories or files as tool arguments.
   `McpError(408)` after 30 seconds.
 - **Capabilities:** `tools_list_changed` is now `True`, and a server with only
   resource templates reports `resources=True`.
-- **URI templates:** a percent-encoded slash no longer matches a single-segment
-  `{var}` (`res://files/a%2Fb` against `res://files/{name}` is now "not found").
-  Use `{name*}` if slashes are legitimate.
+- **URI templates:** a percent-encoded slash or backslash no longer matches a
+  single-segment `{var}` (`res://files/a%2Fb` against `res://files/{name}` is
+  now "not found"); use `{name*}` if slashes are legitimate. No variable may
+  contain a `.` or `..` segment or a NUL byte.
 - **Failing handlers:** a completion handler that raises now produces
   `McpError(500)` for that request; it used to end the whole stream with a gRPC
   `UNKNOWN` status.
@@ -176,6 +189,12 @@ honouring `ctx.signal`.
 `ErrorCode` is exported with these values. An `McpError` thrown inside a tool
 is now returned as an error instead of `isError` tool output; `ToolError` still
 produces `isError` output.
+
+When a resource, prompt, completion handler or middleware throws anything
+other than an `McpError`, the client now receives a fixed message such as
+`Resource handler for 'res://x' failed` with `-32603`; the exception text is
+written to the server log. Tool arguments that are not a JSON object are
+rejected with `-32602` before the tool runs.
 
 **What to change:** checks against `404` / `400`, and callers that expected
 `ctx.elicit()` on an unsupported client to come back as a tool result.

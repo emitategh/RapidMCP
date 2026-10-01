@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING**: an `McpError` raised inside a tool (e.g. `ctx.elicit()` against a client without elicitation) is returned as an error, not as `is_error` tool output; `ToolError` is unchanged
 - **BREAKING**: `Client.cancel()` fails the pending call locally with `McpError(499)`, and the server no longer sends a response for a cancelled call
 - `ctx.sample()` and `ctx.list_roots()` are documented as deprecated, following MCP 2026-07-28
+- **BREAKING**: tool annotation hints default to `None` ("not set") instead of `False`, in `@server.tool(...)` and `ToolAnnotations`. On v1 an unset hint still goes out as `false`; on v2 it is left unset and clients apply MCP's defaults
+- URI template variables reject `.` / `..` segments, backslashes in a single-segment `{var}`, and NUL bytes
 - Capabilities: `tools_list_changed` is announced, and resource templates count as resources
 - The startup banner prints the address actually bound
 
@@ -33,7 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tool calls hung until the client timeout when a middleware raised or the arguments were not a JSON object
 - An exception in any message handler (e.g. a completion handler) terminated the whole session
 - Requests issued after the stream died waited the full timeout; they now raise `McpError(503)` immediately
-- Tools kept running after the client disconnected, and after a client-side timeout
+- Tools kept running after the client disconnected, after a client-side timeout, and when the awaiting task was cancelled (e.g. an outer `asyncio.wait_for`)
+- Concurrent `async with client:` blocks failed in `modern` / `auto` mode; entrants now share one connect
+- A tool that raised `CancelledError` itself got no reply and the client waited out its timeout; it now gets `-32603`
 - An encoded slash (`%2F`) could smuggle extra path segments into a single-segment `{var}` URI template variable
 - `ctx.sample()` dropped tool-use and binary fields from dict content items
 - LiveKit adapter listed only the first page of tools
@@ -163,6 +167,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING**: request timeouts reject with `McpError` code `408` (was `-1`)
 - **BREAKING**: error codes sent by the server follow MCP / JSON-RPC — unknown tool, resource or prompt is `-32602` (was `404`) and a missing client capability is `-32021` (was `400`). `ErrorCode` is exported
 - **BREAKING**: an `McpError` thrown inside a tool is returned as an error, not as `isError` tool output; `ToolError` is unchanged
+- **BREAKING**: when a resource, prompt, completion handler or middleware throws, the client gets a generic message (`Resource handler for '<uri>' failed`, …) with `-32603`; the exception text is logged on the server instead of being sent. Deliberate `McpError`s are still sent as they are
+- **BREAKING**: tool arguments that are not valid JSON, or not a JSON object, are rejected with `-32602` before the tool runs (an array used to reach the tool)
+- URI template variables reject `.` / `..` segments, backslashes in a single-segment `{var}`, and NUL bytes
 - `ctx.sample()` and `ctx.listRoots()` are marked `@deprecated`, following MCP 2026-07-28
 - Capabilities reflect what is registered instead of always claiming tools, resources and prompts
 - URI template variables are percent-decoded and `{?a,b}` query parameters are extracted
