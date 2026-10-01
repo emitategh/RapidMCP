@@ -87,6 +87,9 @@ async def test_list_tools_returns_schemas_and_only_the_hints_that_were_set(stub)
     assert sorted(tools) == ["echo", "plain"]
     assert '"text"' in tools["echo"].input_schema
     assert tools["echo"].annotations.read_only_hint is True
+    # echo's author set read_only and nothing else: the other hints stay unset.
+    assert not tools["echo"].annotations.HasField("destructive_hint")
+    assert not tools["echo"].annotations.HasField("open_world_hint")
     assert not tools["plain"].HasField("annotations")
     assert result.meta.server_info.name == "v2-server"
 
@@ -195,3 +198,19 @@ async def test_v1_clients_still_work_on_the_same_port():
         result = await client.call_tool("echo", {"text": "still v1"})
 
     assert result.content[0].text == "still v1"
+
+
+async def test_an_explicit_false_hint_is_sent_as_false():
+    srv = RapidMCP(name="hints", version="0.1")
+
+    @srv.tool(destructive=False, title="Safe")
+    async def safe() -> str:
+        return "x"
+
+    async with srv, aio.insecure_channel(f"localhost:{srv.port}") as channel:
+        result = await mcp_v2_pb2_grpc.McpStub(channel).ListTools(pb.ListToolsRequest(meta=META))
+
+    annotations = result.tools[0].annotations
+    assert annotations.HasField("destructive_hint")
+    assert annotations.destructive_hint is False
+    assert not annotations.HasField("read_only_hint")

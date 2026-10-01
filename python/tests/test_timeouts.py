@@ -89,3 +89,13 @@ async def test_elicitation_timeout_is_configurable(server):
         result = await client.call_tool("ask", timeout=3)
 
     assert result.content[0].text == "elicitation timed out"
+
+
+async def test_cancelling_the_awaiting_task_cancels_the_tool_on_the_server(server):
+    async with Client(f"localhost:{server.port}") as client:
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(client.call_tool("slow"), timeout=0.2)
+        await asyncio.sleep(0.7)  # the tool would have finished by now
+        await client.ping()
+
+    assert server.finished == []

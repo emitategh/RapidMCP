@@ -93,3 +93,23 @@ async def test_server_sends_no_response_for_a_cancelled_call():
     responses = [r async for r in _McpServicer(srv).Session(messages(), None)]
 
     assert [r.WhichOneof("message") for r in responses if r.request_id == 7] == []
+
+
+async def test_tool_that_raises_cancelled_error_itself_still_gets_an_answer():
+    srv = RapidMCP(name="codes", version="0.1")
+
+    @srv.tool()
+    async def gives_up() -> str:
+        inner = asyncio.create_task(asyncio.sleep(10))
+        inner.cancel()
+        await inner  # raises CancelledError inside the tool; nobody cancelled the call
+        return "unreachable"
+
+    async with srv, Client(f"localhost:{srv.port}") as client:
+        loop = asyncio.get_running_loop()
+        start = loop.time()
+        with pytest.raises(McpError) as exc:
+            await client.call_tool("gives_up", timeout=5)
+
+    assert exc.value.code == -32603
+    assert loop.time() - start < 2

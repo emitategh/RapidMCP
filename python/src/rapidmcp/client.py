@@ -81,6 +81,7 @@ class Client:
         self._write_queue: asyncio.Queue[mcp_pb2.ClientEnvelope | None] | None = None
         self._background_tasks: set[asyncio.Task] = set()
         self._ref_count: int = 0
+        self._connect_lock = asyncio.Lock()
 
     def set_sampling_handler(self, handler) -> None:
         self._sampling_handler = handler
@@ -195,6 +196,12 @@ class Client:
                 # We stopped waiting — don't leave the tool running on the server.
                 await self.cancel(rid)
             raise McpError(REQUEST_TIMEOUT, f"Request timed out: {msg_type} rid={rid}") from None
+        except asyncio.CancelledError:
+            # The caller gave up (task cancelled, or an outer wait_for expired).
+            self._pending.discard(rid)
+            if msg_type == "call_tool" and self._write_queue is not None:
+                await self.cancel(rid)
+            raise
         elapsed_ms = (time.monotonic() - t0) * 1000
         logger.debug("← %s rid=%d %.1fms", msg_type, rid, elapsed_ms)
         return result
@@ -491,12 +498,15 @@ class Client:
 
     async def __aenter__(self):
         self._ref_count += 1
-        if self._ref_count == 1:
-            try:
-                await self.connect()
-            except BaseException:
-                self._ref_count = 0
-                raise
+        try:
+            # One entrant connects; the others wait here instead of running
+            # against a client that is still mid-handshake.
+            async with self._connect_lock:
+                if self.protocol is None:
+                    await self.connect()
+        except BaseException:
+            self._ref_count = max(0, self._ref_count - 1)
+            raise
         return self
 
     async def __aexit__(self, *exc):

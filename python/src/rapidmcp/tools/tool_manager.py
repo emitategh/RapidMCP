@@ -41,10 +41,10 @@ class ToolManager:
         *,
         description: str | None = None,
         output_schema: dict[str, Any] | None = None,
-        read_only: bool = False,
-        destructive: bool = False,
-        idempotent: bool = False,
-        open_world: bool = False,
+        read_only: bool | None = None,
+        destructive: bool | None = None,
+        idempotent: bool | None = None,
+        open_world: bool | None = None,
         title: str = "",
     ) -> Callable[[Callable], Callable]:
         """Register a tool.
@@ -66,7 +66,8 @@ class ToolManager:
             needs_ctx = _needs_context(fn)
 
             ann: ToolAnnotations | None = None
-            if any((read_only, destructive, idempotent, open_world, title)):
+            hints = (read_only, destructive, idempotent, open_world)
+            if title or any(hint is not None for hint in hints):
                 ann = ToolAnnotations(
                     title=title,
                     read_only_hint=read_only,

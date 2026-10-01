@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger("rapidmcp.server")
 
 SUPPORTED_VERSIONS: tuple[str, ...] = ("2026-07-28",)
+_HINTS = ("read_only_hint", "destructive_hint", "idempotent_hint", "open_world_hint")
 
 
 class _McpV2Servicer(mcp_v2_pb2_grpc.McpServicer):
@@ -100,15 +101,13 @@ class _McpV2Servicer(mcp_v2_pb2_grpc.McpServicer):
                 output_schema=t.output_schema,
             )
             if t.annotations:
-                tool.annotations.CopyFrom(
-                    pb.ToolAnnotations(
-                        title=t.annotations.title,
-                        read_only_hint=t.annotations.read_only_hint,
-                        destructive_hint=t.annotations.destructive_hint,
-                        idempotent_hint=t.annotations.idempotent_hint,
-                        open_world_hint=t.annotations.open_world_hint,
-                    )
-                )
+                tool.annotations.title = t.annotations.title
+                # Only the hints the author set go on the wire; the rest stay unset
+                # so the client applies MCP's defaults.
+                for hint in _HINTS:
+                    value = getattr(t.annotations, hint)
+                    if value is not None:
+                        setattr(tool.annotations, hint, value)
             tools.append(tool)
         page, next_cursor = _paginate(tools, request.cursor, self._server.page_size)
         return pb.ListToolsResult(

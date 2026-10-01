@@ -70,6 +70,8 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
         server_pending = PendingRequests()
         client_capabilities = mcp_pb2.ClientCapabilities()
         _tool_tasks: dict[int, asyncio.Task] = {}
+        # Calls the client (or the end of the session) cancelled: these get no response.
+        _cancelled: set[int] = set()
 
         async def _handle_envelope(envelope: mcp_pb2.ClientEnvelope) -> None:
             nonlocal client_capabilities
@@ -108,10 +110,11 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                     if t.annotations:
                         ann_proto = mcp_pb2.ToolAnnotations(
                             title=t.annotations.title,
-                            read_only_hint=t.annotations.read_only_hint,
-                            destructive_hint=t.annotations.destructive_hint,
-                            idempotent_hint=t.annotations.idempotent_hint,
-                            open_world_hint=t.annotations.open_world_hint,
+                            # v1 hints are plain bools: an unset hint goes out as false.
+                            read_only_hint=bool(t.annotations.read_only_hint),
+                            destructive_hint=bool(t.annotations.destructive_hint),
+                            idempotent_hint=bool(t.annotations.idempotent_hint),
+                            open_world_hint=bool(t.annotations.open_world_hint),
                         )
                     all_tools.append(
                         mcp_pb2.ToolDefinition(
@@ -181,7 +184,19 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                             _rid,
                             elapsed_ms,
                         )
-                        # No response: the client has stopped waiting for this request.
+                        if _rid not in _cancelled:
+                            # Nobody cancelled this call: the tool raised CancelledError
+                            # itself (e.g. an inner task it awaited was cancelled).
+                            await write_queue.put(
+                                mcp_pb2.ServerEnvelope(
+                                    request_id=_rid,
+                                    error=mcp_pb2.ErrorResponse(
+                                        code=INTERNAL_ERROR,
+                                        message=f"Tool call '{_req.name}' failed",
+                                    ),
+                                )
+                            )
+                        # Otherwise no response: the client has stopped waiting.
                     except McpError as e:
                         elapsed_ms = (time.monotonic() - t0) * 1000
                         logger.warning(
@@ -216,6 +231,7 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                         )
                     finally:
                         _tool_tasks.pop(_rid, None)
+                        _cancelled.discard(_rid)
 
                 task = asyncio.create_task(_run_tool(rid, req))
                 _tool_tasks[rid] = task
@@ -445,6 +461,7 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
             elif msg_type == "cancel":
                 target_id = envelope.cancel.target_request_id
                 task = _tool_tasks.get(target_id)
+                _cancelled.add(target_id)
                 if task and not task.done():
                     task.cancel()
 
@@ -527,6 +544,7 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
             write_task.cancel()
             # Nobody is left to receive results: stop in-flight tools and release
             # anything waiting on a sampling/elicitation reply from this client.
+            _cancelled.update(_tool_tasks)
             for task in list(_tool_tasks.values()):
                 task.cancel()
             server_pending.cancel_all()

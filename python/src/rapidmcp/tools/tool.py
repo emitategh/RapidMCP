@@ -17,15 +17,16 @@ from typing import Any
 class ToolAnnotations:
     """Behavioural hints for a tool, surfaced to MCP clients.
 
-    All fields are optional. Clients use these to decide how to present or
+    All fields are optional; a hint left as ``None`` was not set by the author
+    and is not asserted to clients. Clients use these to decide how to present or
     invoke the tool (e.g. warn the user before calling a destructive tool).
     """
 
     title: str = ""
-    read_only_hint: bool = False
-    destructive_hint: bool = False
-    idempotent_hint: bool = False
-    open_world_hint: bool = False
+    read_only_hint: bool | None = None
+    destructive_hint: bool | None = None
+    idempotent_hint: bool | None = None
+    open_world_hint: bool | None = None
 
 
 @dataclass

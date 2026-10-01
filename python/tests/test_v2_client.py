@@ -74,9 +74,9 @@ async def test_modern_client_applies_mcp_defaults_to_unset_annotation_hints():
     assert tools["plain"].annotations.destructive_hint is True
     assert tools["plain"].annotations.open_world_hint is True
     assert tools["plain"].annotations.read_only_hint is False
-    # Annotated: exactly what the server said.
+    # Annotated with read_only only: that hint as given, the rest defaulted.
     assert tools["echo"].annotations.read_only_hint is True
-    assert tools["echo"].annotations.destructive_hint is False
+    assert tools["echo"].annotations.destructive_hint is True
 
 
 async def test_modern_client_follows_pagination_cursors():

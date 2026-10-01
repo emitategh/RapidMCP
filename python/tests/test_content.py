@@ -37,10 +37,12 @@ def test_audio_custom_mime():
 def test_tool_annotations_defaults():
     ann = ToolAnnotations()
     assert ann.title == ""
-    assert ann.read_only_hint is False
-    assert ann.destructive_hint is False
-    assert ann.idempotent_hint is False
-    assert ann.open_world_hint is False
+    # A hint nobody set is None, not False: "not destructive" is a claim the
+    # author has to make explicitly.
+    assert ann.read_only_hint is None
+    assert ann.destructive_hint is None
+    assert ann.idempotent_hint is None
+    assert ann.open_world_hint is None
 
 
 # ---------------------------------------------------------------------------
@@ -58,7 +60,7 @@ def test_tool_decorator_stores_read_only_hint():
     t = app._tools["safe_read"]
     assert t.annotations is not None
     assert t.annotations.read_only_hint is True
-    assert t.annotations.destructive_hint is False
+    assert t.annotations.destructive_hint is None
 
 
 def test_tool_decorator_stores_all_hints():
