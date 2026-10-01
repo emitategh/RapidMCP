@@ -35,13 +35,16 @@ class RapidMCP:
         page_size: int | None = None,
         auth: Callable[[str], bool | Awaitable[bool]] | None = None,
         tls: TLSConfig | None = None,
+        mask_error_details: bool = False,
     ) -> None:
         self.name = name
         self.version = version
         self.page_size = page_size
         self._auth = auth
         self._tls = tls
-        self._tool_manager = ToolManager(middleware=middleware)
+        self._tool_manager = ToolManager(
+            middleware=middleware, mask_error_details=mask_error_details
+        )
         self._resource_manager = ResourceManager()
         self._prompt_manager = PromptManager()
         self._session_queues: list[asyncio.Queue] = []

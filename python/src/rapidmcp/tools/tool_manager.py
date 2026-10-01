@@ -5,14 +5,13 @@ from __future__ import annotations
 
 import json
 import logging
-import traceback
 from collections.abc import Callable
 from functools import partial
 from typing import Any
 
 from rapidmcp._generated import mcp_pb2
 from rapidmcp._utils import _to_content_items
-from rapidmcp.errors import McpError
+from rapidmcp.errors import McpError, ToolError
 from rapidmcp.middleware import Middleware, ToolCallContext
 from rapidmcp.tools.tool import (
     RegisteredTool,
@@ -28,7 +27,10 @@ logger = logging.getLogger(__name__)
 class ToolManager:
     """Owns the tool registry, middleware chain, and tool dispatch."""
 
-    def __init__(self, middleware: list[Middleware] | None = None) -> None:
+    def __init__(
+        self, middleware: list[Middleware] | None = None, mask_error_details: bool = False
+    ) -> None:
+        self._mask_error_details = mask_error_details
         self._tools: dict[str, RegisteredTool] = {}
         self._middleware: list[Middleware] = list(middleware or [])
         self._cached_chain: Any | None = None
@@ -148,9 +150,17 @@ class ToolManager:
             result = await tool.handler(**args)
             content = _to_content_items(result)
             return mcp_pb2.CallToolResponse(content=content, is_error=False)
-        except Exception:
+        except ToolError as e:
+            # Raised on purpose by the handler — the message is meant for the caller.
             logger.exception("Tool '%s' raised an exception", name)
-            return mcp_pb2.CallToolResponse(
-                content=[mcp_pb2.ContentItem(type="text", text=traceback.format_exc())],
-                is_error=True,
-            )
+            text = e.message
+        except Exception as e:
+            # The traceback stays in the server log; it is never sent to the client.
+            logger.exception("Tool '%s' raised an exception", name)
+            text = f"Error calling tool '{name}'"
+            if not self._mask_error_details:
+                text = f"{text}: {e}"
+        return mcp_pb2.CallToolResponse(
+            content=[mcp_pb2.ContentItem(type="text", text=text)],
+            is_error=True,
+        )
