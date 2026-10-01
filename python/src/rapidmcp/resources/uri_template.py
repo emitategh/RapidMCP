@@ -73,7 +73,15 @@ def match_uri_template(uri: str, uri_template: str) -> dict[str, str] | None:
     if not match:
         return None
 
-    params = {k: unquote(v) for k, v in match.groupdict().items()}
+    wildcards = set(re.findall(r"\{([^{}?]+)\*\}", uri_template))
+    params: dict[str, str] = {}
+    for name, raw in match.groupdict().items():
+        value = unquote(raw)
+        # ``{var}`` promises a single path segment; an encoded slash must not
+        # turn it into several (``..%2F..%2Fsecret`` -> ``../../secret``).
+        if name not in wildcards and "/" in value:
+            return None
+        params[name] = value
 
     # Merge query parameters declared in the template
     if query_string:

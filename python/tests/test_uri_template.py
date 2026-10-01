@@ -53,3 +53,17 @@ def test_empty_segment_no_match():
 def test_invalid_regex_template_returns_none():
     # Hyphenated names produce invalid regex group names
     assert match_uri_template("res://x/1", "res://x/{bad-name}") is None
+
+
+def test_encoded_slash_cannot_smuggle_extra_segments_into_a_single_variable():
+    assert match_uri_template("res://files/..%2F..%2Fsecret", "res://files/{name}") is None
+
+
+def test_encoded_slash_is_allowed_in_a_wildcard_variable():
+    result = match_uri_template("res://files/a%2Fb.txt", "res://files/{path*}")
+    assert result == {"path": "a/b.txt"}
+
+
+def test_other_percent_escapes_are_still_decoded():
+    result = match_uri_template("res://files/my%20file.txt", "res://files/{name}")
+    assert result == {"name": "my file.txt"}
