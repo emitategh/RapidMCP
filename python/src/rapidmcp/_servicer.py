@@ -87,8 +87,10 @@ class _McpServicer(mcp_pb2_grpc.McpServicer):
                             server_version=self._server.version,
                             capabilities=mcp_pb2.ServerCapabilities(
                                 tools=bool(self._server._tools),
-                                tools_list_changed=False,
-                                resources=bool(self._server._resources),
+                                tools_list_changed=True,
+                                resources=bool(
+                                    self._server._resources or self._server._resource_templates
+                                ),
                                 prompts=bool(self._server._prompts),
                             ),
                         ),
