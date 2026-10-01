@@ -20,6 +20,8 @@ export class Context {
   private _capabilities: ClientCapabilities;
   private _pending: PendingRequests;
   private _queue: AsyncQueue<DeepPartial<ServerEnvelope> | null>;
+  /** Aborted when the client cancels this tool call. */
+  public readonly signal: AbortSignal;
   public readonly log: {
     debug: (message: string) => void;
     info: (message: string) => void;
@@ -31,10 +33,12 @@ export class Context {
     capabilities: ClientCapabilities,
     pending: PendingRequests,
     queue: AsyncQueue<DeepPartial<ServerEnvelope> | null>,
+    signal: AbortSignal = new AbortController().signal,
   ) {
     this._capabilities = capabilities;
     this._pending = pending;
     this._queue = queue;
+    this.signal = signal;
 
     this.log = {
       debug: (msg: string) => this._log("debug", msg),

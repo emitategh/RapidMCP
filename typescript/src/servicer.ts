@@ -96,6 +96,8 @@ export class McpServicer implements McpServiceImplementation {
       elicitation: false,
       roots: false,
     };
+    // In-flight tool calls by client request id, so `cancel` can reach them.
+    const toolCalls = new Map<bigint, AbortController>();
 
     try {
       for await (const envelope of request) {
@@ -167,6 +169,8 @@ export class McpServicer implements McpServiceImplementation {
           case "callTool": {
             // Fire-and-forget: don't block the reader loop
             const callMsg = msg.callTool;
+            const controller = new AbortController();
+            toolCalls.set(rid, controller);
             void this._handleCallTool(
               rid,
               callMsg.name,
@@ -174,7 +178,8 @@ export class McpServicer implements McpServiceImplementation {
               clientCapabilities,
               writeQueue,
               pending,
-            );
+              controller.signal,
+            ).finally(() => toolCalls.delete(rid));
             break;
           }
 
@@ -328,8 +333,9 @@ export class McpServicer implements McpServiceImplementation {
           }
 
           case "cancel": {
-            // Reject the pending request if it exists
-            pending.reject(msg.cancel.targetRequestId, new Error("Cancelled by client"));
+            // targetRequestId is a client request id; `pending` holds server-initiated
+            // ids from a separate counter, so it must not be touched here.
+            toolCalls.get(msg.cancel.targetRequestId)?.abort();
             break;
           }
 
@@ -370,6 +376,7 @@ export class McpServicer implements McpServiceImplementation {
     capabilities: ClientCapabilities,
     writeQueue: AsyncQueue<DeepPartial<ServerEnvelope> | null>,
     pending: PendingRequests,
+    signal: AbortSignal,
   ): Promise<void> {
     try {
       let args: Record<string, unknown> = {};
@@ -383,7 +390,7 @@ export class McpServicer implements McpServiceImplementation {
       }
 
       // Build context for tools that need it
-      const ctx = new Context(capabilities, pending, writeQueue);
+      const ctx = new Context(capabilities, pending, writeQueue, signal);
 
       // Parse input schema for middleware
       let inputSchema: Record<string, unknown> | null = null;
@@ -408,6 +415,10 @@ export class McpServicer implements McpServiceImplementation {
         ctx,
         inputSchema,
       });
+
+      if (signal.aborted) {
+        throw new McpError(499, "Tool call cancelled");
+      }
 
       writeQueue.enqueue({
         requestId: rid,

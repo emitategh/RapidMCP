@@ -308,6 +308,10 @@ export class Client {
     args: Record<string, unknown> = {},
     opts?: { signal?: AbortSignal },
   ): Promise<CallToolResult> {
+    if (opts?.signal?.aborted) {
+      throw new McpError(-1, "Aborted");
+    }
+
     const requestId = this._pending.nextId();
     const promise = this._pending.create(requestId);
 
@@ -337,18 +341,16 @@ export class Client {
     // AbortSignal
     if (opts?.signal) {
       const signal = opts.signal;
-      if (signal.aborted) {
-        this.cancel(requestId);
-        throw new McpError(-1, "Aborted");
-      }
       const abortPromise = new Promise<never>((_, reject) => {
         const onAbort = () => {
           this.cancel(requestId);
           reject(new McpError(-1, "Aborted"));
         };
         signal.addEventListener("abort", onAbort, { once: true });
-        // Clean up listener when the main promise settles
-        promise.finally(() => signal.removeEventListener("abort", onAbort));
+        // Clean up listener when the main promise settles. then(f, f) rather than
+        // finally(): finally() returns a promise that re-rejects with nobody listening.
+        const cleanup = () => signal.removeEventListener("abort", onAbort);
+        promise.then(cleanup, cleanup);
       });
       racers.push(abortPromise);
     }
