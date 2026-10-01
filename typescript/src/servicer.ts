@@ -223,7 +223,12 @@ export class McpServicer implements McpServiceImplementation {
                 },
               });
             } catch (err) {
-              this._enqueueError(writeQueue, rid, err);
+              this._enqueueError(
+                writeQueue,
+                rid,
+                err,
+                `Resource handler for '${msg.readResource.uri}' failed`,
+              );
             }
             break;
           }
@@ -287,7 +292,12 @@ export class McpServicer implements McpServiceImplementation {
                 },
               });
             } catch (err) {
-              this._enqueueError(writeQueue, rid, err);
+              this._enqueueError(
+                writeQueue,
+                rid,
+                err,
+                `Prompt handler '${msg.getPrompt.name}' failed`,
+              );
             }
             break;
           }
@@ -314,7 +324,12 @@ export class McpServicer implements McpServiceImplementation {
                 },
               });
             } catch (err) {
-              this._enqueueError(writeQueue, rid, err);
+              this._enqueueError(
+                writeQueue,
+                rid,
+                err,
+                `Completion handler for '${msg.complete.ref?.name ?? ""}' failed`,
+              );
             }
             break;
           }
@@ -395,7 +410,22 @@ export class McpServicer implements McpServiceImplementation {
     try {
       let args: Record<string, unknown> = {};
       if (argsJson) {
-        args = JSON.parse(argsJson) as Record<string, unknown>;
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(argsJson);
+        } catch {
+          throw new McpError(
+            ErrorCode.InvalidParams,
+            `Invalid arguments for tool '${name}': not valid JSON`,
+          );
+        }
+        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+          throw new McpError(
+            ErrorCode.InvalidParams,
+            `Invalid arguments for tool '${name}': expected a JSON object`,
+          );
+        }
+        args = parsed as Record<string, unknown>;
       }
 
       const tool = this._toolManager.getTool(name);
@@ -445,7 +475,7 @@ export class McpServicer implements McpServiceImplementation {
       });
     } catch (err) {
       if (signal.aborted) return;
-      this._enqueueError(writeQueue, rid, err);
+      this._enqueueError(writeQueue, rid, err, `Tool call '${name}' failed`);
     }
   }
 
@@ -464,13 +494,21 @@ export class McpServicer implements McpServiceImplementation {
     }
   }
 
+  /**
+   * Answer a request with an error. An McpError is a deliberate protocol error
+   * and goes out as it is; anything else is the server's own code failing, so
+   * the client gets *fallback* and the detail stays in the server log.
+   */
   private _enqueueError(
     writeQueue: AsyncQueue<DeepPartial<ServerEnvelope> | null>,
     rid: bigint,
     err: unknown,
+    fallback: string,
   ): void {
-    const code = err instanceof McpError ? err.code : ErrorCode.InternalError;
-    const message = err instanceof Error ? err.message : String(err);
+    const deliberate = err instanceof McpError;
+    if (!deliberate) console.error(`[rapidmcp] ${fallback}:`, err);
+    const code = deliberate ? err.code : ErrorCode.InternalError;
+    const message = deliberate ? err.message : fallback;
     writeQueue.enqueue({
       requestId: rid,
       message: {
