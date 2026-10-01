@@ -184,6 +184,10 @@ async def test_broadcast_during_concurrent_tool_calls():
             async with Client(f"localhost:{server.port}") as client:
                 received: list[int] = []
                 client.on_notification("tools_list_changed", lambda _: received.append(1))
+                # The server registers a session for broadcasts when it processes the
+                # client's `initialized`, which connect() does not wait for. A reply to
+                # this ping proves it has been processed (messages are handled in order).
+                await client.ping()
 
                 # Fire off 20 concurrent slow tool calls
                 tool_tasks = [
