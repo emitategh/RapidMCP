@@ -1,6 +1,6 @@
 import type { ToolConfig, RegisteredTool } from "./tool.js";
 import { toContentItems } from "../_utils.js";
-import { McpError } from "../errors.js";
+import { McpError, ToolError } from "../errors.js";
 import type { CallToolResult } from "../middleware.js";
 import { toJSONSchema, type ZodType } from "zod";
 
@@ -12,6 +12,11 @@ function isZodType(value: ZodType | Record<string, unknown>): value is ZodType {
 
 export class ToolManager {
   private _tools = new Map<string, RegisteredTool>();
+  private _maskErrorDetails: boolean;
+
+  constructor(opts: { maskErrorDetails?: boolean } = {}) {
+    this._maskErrorDetails = opts.maskErrorDetails ?? false;
+  }
 
   addTool<T>(config: ToolConfig<T>): void {
     let inputSchema = "{}";
@@ -72,7 +77,16 @@ export class ToolManager {
       const result = await tool.handler(validatedArgs, ctx);
       return { content: toContentItems(result), isError: false };
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const detail = err instanceof Error ? err.message : String(err);
+      let message: string;
+      if (err instanceof ToolError) {
+        // Thrown on purpose by the handler — the message is meant for the caller.
+        message = detail;
+      } else {
+        message = this._maskErrorDetails
+          ? `Error calling tool '${name}'`
+          : `Error calling tool '${name}': ${detail}`;
+      }
       return {
         content: [{ type: "text", text: message, data: new Uint8Array(), mimeType: "", uri: "" }],
         isError: true,

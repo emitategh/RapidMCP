@@ -36,6 +36,8 @@ export interface RapidMCPOptions {
   auth?: TokenVerifier;
   /** Serve over TLS (and mTLS when `ca` is set). */
   tls?: ServerTlsConfig;
+  /** Report "Error calling tool 'x'" without the exception text (ToolError messages still pass). */
+  maskErrorDetails?: boolean;
 }
 
 export interface ListenOptions {
@@ -50,7 +52,7 @@ export class RapidMCP {
   private _auth: TokenVerifier | undefined;
   private _tls: ServerTlsConfig | undefined;
 
-  private _toolManager = new ToolManager();
+  private _toolManager: ToolManager;
   private _resourceManager = new ResourceManager();
   private _promptManager = new PromptManager();
   private _middlewares: Middleware[] = [];
@@ -66,6 +68,7 @@ export class RapidMCP {
     this._pageSize = opts.pageSize;
     this._auth = opts.auth;
     this._tls = opts.tls;
+    this._toolManager = new ToolManager({ maskErrorDetails: opts.maskErrorDetails });
   }
 
   // ── Registration ──────────────────────────────────────────
