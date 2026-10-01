@@ -21,7 +21,7 @@ import {
   type ListRootsResponse,
 } from "../generated/mcp.js";
 import { McpError } from "./errors.js";
-import { AsyncQueue, PendingRequests, NotificationRegistry } from "./session.js";
+import { AsyncQueue, PendingRequests, NotificationRegistry, withTimeout } from "./session.js";
 import { buildChannelCredentials, buildMetadata, type ClientOptions } from "./auth.js";
 import {
   type Tool,
@@ -312,19 +312,10 @@ export class Client {
 
     this._sendQueue.enqueue({ ...envelope, requestId } as DeepPartial<ClientEnvelope>);
 
-    // Race against timeout
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      const timer = setTimeout(
-        () => reject(new McpError(-1, "Request timeout")),
-        this._requestTimeout,
-      );
-      // Unref so timer doesn't keep the process alive
-      if (typeof timer === "object" && "unref" in timer) {
-        (timer as NodeJS.Timeout).unref();
-      }
+    return withTimeout(promise, this._requestTimeout, () => {
+      this._pending.discard(requestId);
+      return new McpError(408, "Request timeout");
     });
-
-    return Promise.race([promise, timeoutPromise]);
   }
 
   // ── Public API ────────────────────────────────────────────
@@ -345,7 +336,11 @@ export class Client {
   async callTool(
     name: string,
     args: Record<string, unknown> = {},
-    opts?: { signal?: AbortSignal },
+    opts?: {
+      signal?: AbortSignal;
+      /** Milliseconds to wait for this call; overrides the client's requestTimeout. */
+      timeout?: number;
+    },
   ): Promise<CallToolResult> {
     if (opts?.signal?.aborted) {
       throw new McpError(-1, "Aborted");
@@ -363,20 +358,13 @@ export class Client {
       },
     } as DeepPartial<ClientEnvelope>);
 
-    // Build race candidates
-    const racers: Promise<unknown>[] = [promise];
-
-    // Timeout
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      const timer = setTimeout(
-        () => reject(new McpError(-1, "Request timeout")),
-        this._requestTimeout,
-      );
-      if (typeof timer === "object" && "unref" in timer) {
-        (timer as NodeJS.Timeout).unref();
-      }
+    const timed = withTimeout(promise, opts?.timeout ?? this._requestTimeout, () => {
+      // We stopped waiting — don't leave the tool running on the server.
+      this._pending.discard(requestId);
+      void this.cancel(requestId);
+      return new McpError(408, "Request timeout");
     });
-    racers.push(timeoutPromise);
+    const racers: Promise<unknown>[] = [timed];
 
     // AbortSignal
     if (opts?.signal) {
@@ -387,10 +375,10 @@ export class Client {
           reject(new McpError(-1, "Aborted"));
         };
         signal.addEventListener("abort", onAbort, { once: true });
-        // Clean up listener when the main promise settles. then(f, f) rather than
+        // Clean up listener once the call settles or times out. then(f, f) rather than
         // finally(): finally() returns a promise that re-rejects with nobody listening.
         const cleanup = () => signal.removeEventListener("abort", onAbort);
-        promise.then(cleanup, cleanup);
+        timed.then(cleanup, cleanup);
       });
       racers.push(abortPromise);
     }

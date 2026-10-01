@@ -28,6 +28,28 @@ export class AsyncQueue<T> {
 }
 
 /**
+ * Settle with *promise*, or reject with `onTimeout()` after *ms*. The timer is
+ * cleared as soon as the promise settles, so finished requests leave nothing behind.
+ */
+export function withTimeout<T>(promise: Promise<T>, ms: number, onTimeout: () => Error): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(onTimeout()), ms);
+    // Don't keep the process alive just for this timer.
+    if (typeof timer === "object" && "unref" in timer) (timer as NodeJS.Timeout).unref();
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
+/**
  * PendingRequests — track in-flight outbound requests
  * and correlate responses by requestId.
  */
@@ -60,6 +82,11 @@ export class PendingRequests {
       this._pending.delete(requestId);
       entry.reject(error);
     }
+  }
+
+  /** Forget a request nobody is waiting on any more (e.g. after a timeout). */
+  discard(requestId: bigint): void {
+    this._pending.delete(requestId);
   }
 
   cancelAll(): void {

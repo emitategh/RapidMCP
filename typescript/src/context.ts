@@ -1,6 +1,6 @@
 import { ServerNotification_Type, type DeepPartial, type ServerEnvelope } from "../generated/mcp.js";
 import { McpError } from "./errors.js";
-import { AsyncQueue, PendingRequests } from "./session.js";
+import { AsyncQueue, PendingRequests, withTimeout } from "./session.js";
 
 interface ClientCapabilities {
   sampling: boolean;
@@ -40,6 +40,12 @@ export interface SamplingRequestInput {
 }
 
 const REQUEST_TIMEOUT = 30_000;
+
+/** Options for requests the server sends to the client mid-tool-call. */
+export interface ReplyOptions {
+  /** Milliseconds to wait for the client's reply (default 30 000). */
+  timeout?: number;
+}
 
 export class Context {
   private _capabilities: ClientCapabilities;
@@ -99,7 +105,7 @@ export class Context {
     });
   }
 
-  async sample(request: SamplingRequestInput): Promise<unknown> {
+  async sample(request: SamplingRequestInput, opts: ReplyOptions = {}): Promise<unknown> {
     if (!this._capabilities.sampling) {
       throw new McpError(400, "Client does not support sampling");
     }
@@ -146,19 +152,24 @@ export class Context {
       },
     });
 
-    const timeout = new Promise<never>((_, reject) => {
-      const timer = setTimeout(
-        () => reject(new McpError(408, "Sampling request timed out")),
-        REQUEST_TIMEOUT,
-      );
-      if (typeof timer === "object" && "unref" in timer) (timer as NodeJS.Timeout).unref();
-    });
+    return this._awaitReply(rid, future, "Sampling", opts.timeout);
+  }
 
-    return Promise.race([future, timeout]);
+  /** Wait for the client's reply to request *rid*, giving up after *timeout* ms. */
+  private _awaitReply(
+    rid: bigint,
+    future: Promise<unknown>,
+    label: string,
+    timeout: number = REQUEST_TIMEOUT,
+  ): Promise<unknown> {
+    return withTimeout(future, timeout, () => {
+      this._pending.discard(rid);
+      return new McpError(408, `${label} request timed out`);
+    });
   }
 
   /** Ask the client for its registered root URIs. */
-  async listRoots(): Promise<Array<{ uri: string; name: string }>> {
+  async listRoots(opts: ReplyOptions = {}): Promise<Array<{ uri: string; name: string }>> {
     if (!this._capabilities.roots) {
       throw new McpError(400, "Client does not support roots");
     }
@@ -170,15 +181,7 @@ export class Context {
       message: { $case: "rootsRequest" as const, rootsRequest: {} },
     });
 
-    const timeout = new Promise<never>((_, reject) => {
-      const timer = setTimeout(
-        () => reject(new McpError(408, "Roots request timed out")),
-        REQUEST_TIMEOUT,
-      );
-      if (typeof timer === "object" && "unref" in timer) (timer as NodeJS.Timeout).unref();
-    });
-
-    const reply = (await Promise.race([future, timeout])) as {
+    const reply = (await this._awaitReply(rid, future, "Roots", opts.timeout)) as {
       roots: Array<{ uri: string; name: string }>;
     };
     return reply.roots;
@@ -187,6 +190,7 @@ export class Context {
   async elicit(
     message: string,
     schema: Record<string, unknown>,
+    opts: ReplyOptions = {},
   ): Promise<{ action: string; content: string }> {
     if (!this._capabilities.elicitation) {
       throw new McpError(400, "Client does not support elicitation");
@@ -205,14 +209,9 @@ export class Context {
       },
     });
 
-    const timeout = new Promise<never>((_, reject) => {
-      const timer = setTimeout(
-        () => reject(new McpError(408, "Elicitation request timed out")),
-        REQUEST_TIMEOUT,
-      );
-      if (typeof timer === "object" && "unref" in timer) (timer as NodeJS.Timeout).unref();
-    });
-
-    return Promise.race([future, timeout]) as Promise<{ action: string; content: string }>;
+    return this._awaitReply(rid, future, "Elicitation", opts.timeout) as Promise<{
+      action: string;
+      content: string;
+    }>;
   }
 }
