@@ -195,6 +195,24 @@ def _docker_available() -> bool:
 pytestmark = pytest.mark.skipif(not _docker_available(), reason="Docker daemon not available")
 
 
+def _require_live_backend(sock: socket.socket) -> None:
+    """Raise OSError unless something behind the published port holds the connection.
+
+    Docker's port proxy accepts TCP connections as soon as the container is
+    created, a second or more before the server inside is listening, and then
+    closes them. So an accepted connection proves nothing: read from it. A
+    plaintext gRPC server sends its HTTP/2 SETTINGS at once; a TLS server stays
+    silent waiting for the ClientHello (a timeout here, which is fine). Only an
+    immediate close means "nothing is listening yet".
+    """
+    sock.settimeout(0.5)
+    try:
+        if sock.recv(1) == b"":
+            raise ConnectionError("published port closed the connection: server not up yet")
+    except TimeoutError:
+        pass
+
+
 class _DockerTLSServer:
     """Start a TLS server script in Docker with the PKI cert dir mounted at /certs.
 
@@ -269,7 +287,8 @@ class _DockerTLSServer:
         passes = 0
         while time.monotonic() < deadline:
             try:
-                with socket.create_connection(("127.0.0.1", self.port), timeout=0.5):
+                with socket.create_connection(("127.0.0.1", self.port), timeout=0.5) as sock:
+                    _require_live_backend(sock)
                     passes += 1
                     if passes >= 2:
                         return
