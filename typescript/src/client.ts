@@ -131,6 +131,7 @@ export class Client {
         this._opts,
         this._requestTimeout,
         () => this._elicitationHandler !== null,
+        this._notifications,
       );
       try {
         this._serverInfo = await transport.discover();
@@ -386,7 +387,7 @@ export class Client {
       timeout?: number;
     },
   ): Promise<CallToolResult> {
-    this._v1Only("callTool");
+    if (this._v2) return this._v2.callTool(name, args, opts);
     if (opts?.signal?.aborted) {
       throw new McpError(-1, "Aborted");
     }
@@ -447,7 +448,7 @@ export class Client {
   }
 
   async readResource(uri: string): Promise<ReadResourceResult> {
-    this._v1Only("readResource");
+    if (this._v2) return this._v2.readResource(uri);
     const resp = (await this._request({
       message: {
         $case: "readResource" as const,
@@ -502,7 +503,7 @@ export class Client {
     name: string,
     args: Record<string, string> = {},
   ): Promise<GetPromptResult> {
-    this._v1Only("getPrompt");
+    if (this._v2) return this._v2.getPrompt(name, args);
     const resp = (await this._request({
       message: {
         $case: "getPrompt" as const,

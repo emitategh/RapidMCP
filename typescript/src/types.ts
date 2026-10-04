@@ -31,6 +31,8 @@ export interface Tool {
 export interface CallToolResult {
   content: ContentItem[];
   isError: boolean;
+  /** The tool's result as a JSON value, when the server sent one (v2 only). */
+  structuredContent?: unknown;
 }
 
 // ── Resource ─────────────────────────────────────────────

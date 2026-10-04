@@ -1,11 +1,25 @@
 /** Client transport for the v2 protocol: one stateless RPC per operation. */
 import { createClientFactory, type Channel } from "nice-grpc";
 import { ClientError, Metadata, Status, type CallOptions } from "nice-grpc-common";
-import { McpDefinition, type McpClient, type RequestMeta } from "../../generated/mcp_v2.js";
+import {
+  McpDefinition,
+  type CallToolResult as WireCallToolResult,
+  type GetPromptResult as WireGetPromptResult,
+  type McpClient,
+  type ReadResourceResult as WireReadResourceResult,
+  type RequestMeta,
+} from "../../generated/mcp_v2.js";
+import type { NotificationRegistry } from "../session.js";
 import { buildMetadata, type ClientOptions } from "../auth.js";
 import { ErrorCode, McpError } from "../errors.js";
 import {
+  convertCallToolResult,
   convertCompleteResult,
+  convertGetPromptResult,
+  convertReadResourceResult,
+  type CallToolResult,
+  type GetPromptResult,
+  type ReadResourceResult,
   convertPrompt,
   convertResource,
   convertResourceTemplate,
@@ -29,17 +43,19 @@ export function isV2Missing(err: unknown): boolean {
 
 export class V2Transport {
   private _client: McpClient;
+  private _nextProgressToken = 1;
 
   constructor(
     channel: Channel,
     private readonly _opts: ClientOptions,
     private readonly _timeoutMs: number,
     private readonly _supportsElicitation: () => boolean,
+    private readonly _notifications: NotificationRegistry,
   ) {
     this._client = createClientFactory().create(McpDefinition, channel);
   }
 
-  private _meta(): RequestMeta {
+  private _meta(events = false): RequestMeta {
     return {
       protocolVersion: PROTOCOL_VERSION,
       clientCapabilities: {
@@ -47,6 +63,9 @@ export class V2Transport {
         extensions: {},
       },
       clientInfo: { name: "rapidmcp-typescript", version: "0.3.0" },
+      progressToken:
+        events && this._notifications.has("progress") ? `p${this._nextProgressToken++}` : undefined,
+      logLevel: events && this._notifications.has("log") ? "debug" : undefined,
     };
   }
 
@@ -136,5 +155,119 @@ export class V2Transport {
       ),
     );
     return convertCompleteResult(result);
+  }
+
+  private async _notify(kind: string, payload: unknown): Promise<void> {
+    try {
+      await this._notifications.dispatch(kind, JSON.stringify(payload));
+    } catch (err) {
+      console.error(`[rapidmcp] notification handler for '${kind}' failed:`, err);
+    }
+  }
+
+  /** Run a streaming RPC to its terminal event, feeding progress and log handlers. */
+  private async _stream<R>(
+    open: (options: CallOptions) => AsyncIterable<{ event?: { $case: string } | undefined }>,
+    opts: { signal?: AbortSignal; timeout?: number } = {},
+  ): Promise<R> {
+    if (opts.signal?.aborted) throw new McpError(-1, "Aborted");
+    const controller = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, opts.timeout ?? this._timeoutMs);
+    const onAbort = () => controller.abort();
+    opts.signal?.addEventListener("abort", onAbort, { once: true });
+
+    let trailer: Metadata | null = null;
+    const options: CallOptions = {
+      signal: controller.signal,
+      onTrailer: (t) => {
+        trailer = t;
+      },
+    };
+    if (this._opts.token) options.metadata = buildMetadata(this._opts);
+
+    try {
+      for await (const message of open(options)) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- one loop serves three event unions
+        const event = message.event as any;
+        if (!event) continue;
+        if (event.$case === "progress") {
+          const p = event.progress;
+          await this._notify("progress", {
+            progress: p.progress,
+            total: p.total ?? null,
+            message: p.message,
+            token: p.token,
+          });
+        } else if (event.$case === "log") {
+          const data = event.log.data ? JSON.parse(event.log.data) : {};
+          await this._notify("log", {
+            level: event.log.level,
+            message: data.message ?? null,
+            extra: data.extra ?? null,
+          });
+        } else if (event.$case === "complete") {
+          return event.complete as R;
+        } else if (event.$case === "inputRequired") {
+          throw new McpError(
+            ErrorCode.MethodNotFound,
+            "The server asked for input, which this client cannot give yet",
+          );
+        }
+      }
+      throw new McpError(ErrorCode.InternalError, "The server ended the call without a result");
+    } catch (err) {
+      if (err instanceof McpError) throw err;
+      if (err instanceof ClientError) {
+        const mapped = errorFromRpc(err.code, err.details, trailer);
+        if (mapped) throw mapped;
+      } else if (err instanceof Error && err.name === "AbortError") {
+        throw timedOut
+          ? new McpError(ErrorCode.RequestTimeout, "Request timeout")
+          : new McpError(-1, "Aborted");
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+      opts.signal?.removeEventListener("abort", onAbort);
+    }
+  }
+
+  async callTool(
+    name: string,
+    args: Record<string, unknown>,
+    opts: { signal?: AbortSignal; timeout?: number } = {},
+  ): Promise<CallToolResult> {
+    const wire = await this._stream<WireCallToolResult>(
+      (o) =>
+        this._client.callTool(
+          { meta: this._meta(true), name, arguments: JSON.stringify(args), inputResponses: {} },
+          o,
+        ),
+      opts,
+    );
+    return {
+      ...convertCallToolResult(wire),
+      structuredContent: wire.structuredContent ? JSON.parse(wire.structuredContent) : undefined,
+    };
+  }
+
+  async readResource(uri: string): Promise<ReadResourceResult> {
+    const wire = await this._stream<WireReadResourceResult>((o) =>
+      this._client.readResource({ meta: this._meta(), uri, inputResponses: {} }, o),
+    );
+    return convertReadResourceResult(wire);
+  }
+
+  async getPrompt(name: string, args: Record<string, string>): Promise<GetPromptResult> {
+    const wire = await this._stream<WireGetPromptResult>((o) =>
+      this._client.getPrompt({ meta: this._meta(), name, arguments: args, inputResponses: {} }, o),
+    );
+    return convertGetPromptResult(
+      wire as unknown as Parameters<typeof convertGetPromptResult>[0],
+    );
   }
 }

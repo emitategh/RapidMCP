@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### [Unreleased]
 
 ### Added
-- **Protocol v2 (experimental, phase 1):** servers also answer the stateless `mcp.v2.Mcp` service — `Discover`, the list operations and `Complete` — following MCP 2026-07-28. `Client(mode="modern")` speaks it; `mode="auto"` tries it and falls back to v1; the default stays `"legacy"`. Tool calls, resource reads and prompts are not on v2 yet
+- **Protocol v2 (experimental):** servers also answer the stateless `mcp.v2.Mcp` service, following MCP 2026-07-28 — discovery, lists, completion, and tool calls, resource reads and prompts as streaming RPCs with per-request progress and log messages, structured tool results, deadlines and cancellation. `Client(mode="modern")` speaks it; `mode="auto"` tries it and falls back to v1; the default stays `"legacy"`. Not on v2 yet: asking the user for input, and subscriptions
 - Plain `def` handlers for tools, resources and prompts (run in a worker thread)
 - `Client(request_timeout=...)`, `call_tool(..., timeout=...)`, and `timeout=` on `ctx.sample` / `ctx.elicit` / `ctx.list_roots` (`None` waits indefinitely)
 - `RapidMCP(host=...)`, `run(host=...)` and `rapidmcp run --host` (default unchanged: all interfaces)
@@ -151,7 +151,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### [Unreleased]
 
 ### Added
-- **Protocol v2 (experimental, phase 1):** servers also answer the stateless `mcp.v2.Mcp` service — `discover`, the list operations and `complete` — following MCP 2026-07-28. `new Client(addr, { mode: "modern" })` speaks it; `mode: "auto"` tries it and falls back to v1; the default stays `"legacy"`. Tool calls, resource reads and prompts are not on v2 yet
+- **Protocol v2 (experimental):** servers also answer the stateless `mcp.v2.Mcp` service, following MCP 2026-07-28 — discovery, lists, completion, and tool calls, resource reads and prompts as streaming RPCs with per-request progress and log messages, structured tool results, deadlines and cancellation. `new Client(addr, { mode: "modern" })` speaks it; `mode: "auto"` tries it and falls back to v1; the default stays `"legacy"`. Not on v2 yet: asking the user for input, and subscriptions
 - Server-side token auth (`new RapidMCP({ auth })`) and TLS/mTLS (`tls: { cert, key, ca? }`)
 - `mount(sub, { prefix })` — same naming and all-or-nothing collision rules as Python
 - `ctx.signal` — aborted when the client cancels the call, the call times out, or the session ends

@@ -120,6 +120,11 @@ export class NotificationRegistry {
     list.push(handler);
   }
 
+  /** True when at least one handler is registered for *type*. */
+  has(type: string): boolean {
+    return (this._handlers.get(type)?.length ?? 0) > 0;
+  }
+
   async dispatch(type: string, payload: string): Promise<void> {
     const list = this._handlers.get(type);
     if (!list) return;

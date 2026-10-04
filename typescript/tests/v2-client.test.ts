@@ -110,10 +110,12 @@ describe("Client mode", () => {
     client = new Client(`127.0.0.1:${port}`, { mode: "modern" });
     await client.connect();
 
-    const err = await client.callTool("echo", { text: "x" }).then(
-      () => null,
-      (e: unknown) => e,
-    );
+    let err: unknown = null;
+    try {
+      client.subscribeResource("res://a");
+    } catch (e) {
+      err = e;
+    }
 
     expect(err).toBeInstanceOf(McpError);
     expect((err as McpError).code).toBe(-32601);
