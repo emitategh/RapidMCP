@@ -14,6 +14,7 @@ service Mcp {
   rpc CallTool(CallToolRequest) returns (stream CallToolEvent);
   rpc ReadResource(ReadResourceRequest) returns (stream ReadResourceEvent);
   rpc GetPrompt(GetPromptRequest) returns (stream GetPromptEvent);
+  rpc Listen(ListenRequest) returns (stream ListenEvent);
 }
 
 // ── Per-request / per-result metadata ─────────────────────────────────────
@@ -325,5 +326,35 @@ message GetPromptEvent {
     LogMessage      log            = 2;
     GetPromptResult complete       = 3;
     InputRequired   input_required = 4;
+  }
+}
+
+// ── Subscriptions ─────────────────────────────────────────────────────────
+
+// What a client wants to hear about. Unset / empty = not interested.
+message NotificationFilter {
+  bool tools_list_changed     = 1;
+  bool prompts_list_changed   = 2;
+  bool resources_list_changed = 3;
+  repeated string resource_subscriptions = 4;  // URIs to get resource_updated for
+}
+
+message ListenRequest {
+  RequestMeta meta = 1;
+  NotificationFilter notifications = 2;
+}
+
+message ToolsListChanged {}
+message PromptsListChanged {}
+message ResourcesListChanged {}
+message ResourceUpdated { string uri = 1; }
+
+message ListenEvent {
+  oneof event {
+    NotificationFilter   acknowledged           = 1;  // always first: what the server will send
+    ToolsListChanged     tools_list_changed     = 2;
+    PromptsListChanged   prompts_list_changed   = 3;
+    ResourcesListChanged resources_list_changed = 4;
+    ResourceUpdated      resource_updated       = 5;
   }
 }

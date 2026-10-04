@@ -12,6 +12,7 @@ def test_v2_service_has_the_expected_methods():
         "Complete",
         "Discover",
         "GetPrompt",
+        "Listen",
         "ListPrompts",
         "ListResourceTemplates",
         "ListResources",
@@ -19,7 +20,7 @@ def test_v2_service_has_the_expected_methods():
         "ReadResource",
     ]
     streaming = {m.name for m in service.methods if m.server_streaming}
-    assert streaming == {"CallTool", "ReadResource", "GetPrompt"}
+    assert streaming == {"CallTool", "ReadResource", "GetPrompt", "Listen"}
 
 
 def test_annotation_hints_can_be_left_unset():

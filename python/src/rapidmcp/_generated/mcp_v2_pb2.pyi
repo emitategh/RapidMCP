@@ -568,3 +568,55 @@ class GetPromptEvent(_message.Message):
     complete: GetPromptResult
     input_required: InputRequired
     def __init__(self, progress: _Optional[_Union[Progress, _Mapping]] = ..., log: _Optional[_Union[LogMessage, _Mapping]] = ..., complete: _Optional[_Union[GetPromptResult, _Mapping]] = ..., input_required: _Optional[_Union[InputRequired, _Mapping]] = ...) -> None: ...
+
+class NotificationFilter(_message.Message):
+    __slots__ = ("tools_list_changed", "prompts_list_changed", "resources_list_changed", "resource_subscriptions")
+    TOOLS_LIST_CHANGED_FIELD_NUMBER: _ClassVar[int]
+    PROMPTS_LIST_CHANGED_FIELD_NUMBER: _ClassVar[int]
+    RESOURCES_LIST_CHANGED_FIELD_NUMBER: _ClassVar[int]
+    RESOURCE_SUBSCRIPTIONS_FIELD_NUMBER: _ClassVar[int]
+    tools_list_changed: bool
+    prompts_list_changed: bool
+    resources_list_changed: bool
+    resource_subscriptions: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, tools_list_changed: bool = ..., prompts_list_changed: bool = ..., resources_list_changed: bool = ..., resource_subscriptions: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class ListenRequest(_message.Message):
+    __slots__ = ("meta", "notifications")
+    META_FIELD_NUMBER: _ClassVar[int]
+    NOTIFICATIONS_FIELD_NUMBER: _ClassVar[int]
+    meta: RequestMeta
+    notifications: NotificationFilter
+    def __init__(self, meta: _Optional[_Union[RequestMeta, _Mapping]] = ..., notifications: _Optional[_Union[NotificationFilter, _Mapping]] = ...) -> None: ...
+
+class ToolsListChanged(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class PromptsListChanged(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class ResourcesListChanged(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class ResourceUpdated(_message.Message):
+    __slots__ = ("uri",)
+    URI_FIELD_NUMBER: _ClassVar[int]
+    uri: str
+    def __init__(self, uri: _Optional[str] = ...) -> None: ...
+
+class ListenEvent(_message.Message):
+    __slots__ = ("acknowledged", "tools_list_changed", "prompts_list_changed", "resources_list_changed", "resource_updated")
+    ACKNOWLEDGED_FIELD_NUMBER: _ClassVar[int]
+    TOOLS_LIST_CHANGED_FIELD_NUMBER: _ClassVar[int]
+    PROMPTS_LIST_CHANGED_FIELD_NUMBER: _ClassVar[int]
+    RESOURCES_LIST_CHANGED_FIELD_NUMBER: _ClassVar[int]
+    RESOURCE_UPDATED_FIELD_NUMBER: _ClassVar[int]
+    acknowledged: NotificationFilter
+    tools_list_changed: ToolsListChanged
+    prompts_list_changed: PromptsListChanged
+    resources_list_changed: ResourcesListChanged
+    resource_updated: ResourceUpdated
+    def __init__(self, acknowledged: _Optional[_Union[NotificationFilter, _Mapping]] = ..., tools_list_changed: _Optional[_Union[ToolsListChanged, _Mapping]] = ..., prompts_list_changed: _Optional[_Union[PromptsListChanged, _Mapping]] = ..., resources_list_changed: _Optional[_Union[ResourcesListChanged, _Mapping]] = ..., resource_updated: _Optional[_Union[ResourceUpdated, _Mapping]] = ...) -> None: ...

@@ -9,6 +9,7 @@ describe("v2 generated stubs", () => {
       "complete",
       "discover",
       "getPrompt",
+      "listen",
       "listPrompts",
       "listResourceTemplates",
       "listResources",
@@ -18,6 +19,7 @@ describe("v2 generated stubs", () => {
     expect(McpDefinition.methods.callTool.responseStream).toBe(true);
     expect(McpDefinition.methods.readResource.responseStream).toBe(true);
     expect(McpDefinition.methods.getPrompt.responseStream).toBe(true);
+    expect(McpDefinition.methods.listen.responseStream).toBe(true);
   });
 
   it("let annotation hints be left unset", () => {

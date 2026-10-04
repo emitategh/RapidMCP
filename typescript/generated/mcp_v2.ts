@@ -428,6 +428,45 @@ export interface GetPromptEvent {
     | undefined;
 }
 
+/** What a client wants to hear about. Unset / empty = not interested. */
+export interface NotificationFilter {
+  toolsListChanged: boolean;
+  promptsListChanged: boolean;
+  resourcesListChanged: boolean;
+  /** URIs to get resource_updated for */
+  resourceSubscriptions: string[];
+}
+
+export interface ListenRequest {
+  meta: RequestMeta | undefined;
+  notifications: NotificationFilter | undefined;
+}
+
+export interface ToolsListChanged {
+}
+
+export interface PromptsListChanged {
+}
+
+export interface ResourcesListChanged {
+}
+
+export interface ResourceUpdated {
+  uri: string;
+}
+
+export interface ListenEvent {
+  event:
+    | //
+    /** always first: what the server will send */
+    { $case: "acknowledged"; acknowledged: NotificationFilter }
+    | { $case: "toolsListChanged"; toolsListChanged: ToolsListChanged }
+    | { $case: "promptsListChanged"; promptsListChanged: PromptsListChanged }
+    | { $case: "resourcesListChanged"; resourcesListChanged: ResourcesListChanged }
+    | { $case: "resourceUpdated"; resourceUpdated: ResourceUpdated }
+    | undefined;
+}
+
 function createBaseImplementation(): Implementation {
   return { name: "", version: "" };
 }
@@ -6211,6 +6250,593 @@ export const GetPromptEvent: MessageFns<GetPromptEvent> = {
   },
 };
 
+function createBaseNotificationFilter(): NotificationFilter {
+  return { toolsListChanged: false, promptsListChanged: false, resourcesListChanged: false, resourceSubscriptions: [] };
+}
+
+export const NotificationFilter: MessageFns<NotificationFilter> = {
+  encode(message: NotificationFilter, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.toolsListChanged !== false) {
+      writer.uint32(8).bool(message.toolsListChanged);
+    }
+    if (message.promptsListChanged !== false) {
+      writer.uint32(16).bool(message.promptsListChanged);
+    }
+    if (message.resourcesListChanged !== false) {
+      writer.uint32(24).bool(message.resourcesListChanged);
+    }
+    for (const v of message.resourceSubscriptions) {
+      writer.uint32(34).string(v!);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): NotificationFilter {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseNotificationFilter();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.toolsListChanged = reader.bool();
+          continue;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.promptsListChanged = reader.bool();
+          continue;
+        }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.resourcesListChanged = reader.bool();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.resourceSubscriptions.push(reader.string());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): NotificationFilter {
+    return {
+      toolsListChanged: isSet(object.toolsListChanged)
+        ? globalThis.Boolean(object.toolsListChanged)
+        : isSet(object.tools_list_changed)
+        ? globalThis.Boolean(object.tools_list_changed)
+        : false,
+      promptsListChanged: isSet(object.promptsListChanged)
+        ? globalThis.Boolean(object.promptsListChanged)
+        : isSet(object.prompts_list_changed)
+        ? globalThis.Boolean(object.prompts_list_changed)
+        : false,
+      resourcesListChanged: isSet(object.resourcesListChanged)
+        ? globalThis.Boolean(object.resourcesListChanged)
+        : isSet(object.resources_list_changed)
+        ? globalThis.Boolean(object.resources_list_changed)
+        : false,
+      resourceSubscriptions: globalThis.Array.isArray(object?.resourceSubscriptions)
+        ? object.resourceSubscriptions.map((e: any) => globalThis.String(e))
+        : globalThis.Array.isArray(object?.resource_subscriptions)
+        ? object.resource_subscriptions.map((e: any) => globalThis.String(e))
+        : [],
+    };
+  },
+
+  toJSON(message: NotificationFilter): unknown {
+    const obj: any = {};
+    if (message.toolsListChanged !== false) {
+      obj.toolsListChanged = message.toolsListChanged;
+    }
+    if (message.promptsListChanged !== false) {
+      obj.promptsListChanged = message.promptsListChanged;
+    }
+    if (message.resourcesListChanged !== false) {
+      obj.resourcesListChanged = message.resourcesListChanged;
+    }
+    if (message.resourceSubscriptions?.length) {
+      obj.resourceSubscriptions = message.resourceSubscriptions;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<NotificationFilter>, I>>(base?: I): NotificationFilter {
+    return NotificationFilter.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<NotificationFilter>, I>>(object: I): NotificationFilter {
+    const message = createBaseNotificationFilter();
+    message.toolsListChanged = object.toolsListChanged ?? false;
+    message.promptsListChanged = object.promptsListChanged ?? false;
+    message.resourcesListChanged = object.resourcesListChanged ?? false;
+    message.resourceSubscriptions = object.resourceSubscriptions?.map((e) => e) || [];
+    return message;
+  },
+};
+
+function createBaseListenRequest(): ListenRequest {
+  return { meta: undefined, notifications: undefined };
+}
+
+export const ListenRequest: MessageFns<ListenRequest> = {
+  encode(message: ListenRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.meta !== undefined) {
+      RequestMeta.encode(message.meta, writer.uint32(10).fork()).join();
+    }
+    if (message.notifications !== undefined) {
+      NotificationFilter.encode(message.notifications, writer.uint32(18).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ListenRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseListenRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.meta = RequestMeta.decode(reader, reader.uint32());
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.notifications = NotificationFilter.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ListenRequest {
+    return {
+      meta: isSet(object.meta) ? RequestMeta.fromJSON(object.meta) : undefined,
+      notifications: isSet(object.notifications) ? NotificationFilter.fromJSON(object.notifications) : undefined,
+    };
+  },
+
+  toJSON(message: ListenRequest): unknown {
+    const obj: any = {};
+    if (message.meta !== undefined) {
+      obj.meta = RequestMeta.toJSON(message.meta);
+    }
+    if (message.notifications !== undefined) {
+      obj.notifications = NotificationFilter.toJSON(message.notifications);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ListenRequest>, I>>(base?: I): ListenRequest {
+    return ListenRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ListenRequest>, I>>(object: I): ListenRequest {
+    const message = createBaseListenRequest();
+    message.meta = (object.meta !== undefined && object.meta !== null)
+      ? RequestMeta.fromPartial(object.meta)
+      : undefined;
+    message.notifications = (object.notifications !== undefined && object.notifications !== null)
+      ? NotificationFilter.fromPartial(object.notifications)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseToolsListChanged(): ToolsListChanged {
+  return {};
+}
+
+export const ToolsListChanged: MessageFns<ToolsListChanged> = {
+  encode(_: ToolsListChanged, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ToolsListChanged {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseToolsListChanged();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(_: any): ToolsListChanged {
+    return {};
+  },
+
+  toJSON(_: ToolsListChanged): unknown {
+    const obj: any = {};
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ToolsListChanged>, I>>(base?: I): ToolsListChanged {
+    return ToolsListChanged.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ToolsListChanged>, I>>(_: I): ToolsListChanged {
+    const message = createBaseToolsListChanged();
+    return message;
+  },
+};
+
+function createBasePromptsListChanged(): PromptsListChanged {
+  return {};
+}
+
+export const PromptsListChanged: MessageFns<PromptsListChanged> = {
+  encode(_: PromptsListChanged, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): PromptsListChanged {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBasePromptsListChanged();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(_: any): PromptsListChanged {
+    return {};
+  },
+
+  toJSON(_: PromptsListChanged): unknown {
+    const obj: any = {};
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<PromptsListChanged>, I>>(base?: I): PromptsListChanged {
+    return PromptsListChanged.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<PromptsListChanged>, I>>(_: I): PromptsListChanged {
+    const message = createBasePromptsListChanged();
+    return message;
+  },
+};
+
+function createBaseResourcesListChanged(): ResourcesListChanged {
+  return {};
+}
+
+export const ResourcesListChanged: MessageFns<ResourcesListChanged> = {
+  encode(_: ResourcesListChanged, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ResourcesListChanged {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseResourcesListChanged();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(_: any): ResourcesListChanged {
+    return {};
+  },
+
+  toJSON(_: ResourcesListChanged): unknown {
+    const obj: any = {};
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ResourcesListChanged>, I>>(base?: I): ResourcesListChanged {
+    return ResourcesListChanged.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ResourcesListChanged>, I>>(_: I): ResourcesListChanged {
+    const message = createBaseResourcesListChanged();
+    return message;
+  },
+};
+
+function createBaseResourceUpdated(): ResourceUpdated {
+  return { uri: "" };
+}
+
+export const ResourceUpdated: MessageFns<ResourceUpdated> = {
+  encode(message: ResourceUpdated, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.uri !== "") {
+      writer.uint32(10).string(message.uri);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ResourceUpdated {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseResourceUpdated();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.uri = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ResourceUpdated {
+    return { uri: isSet(object.uri) ? globalThis.String(object.uri) : "" };
+  },
+
+  toJSON(message: ResourceUpdated): unknown {
+    const obj: any = {};
+    if (message.uri !== "") {
+      obj.uri = message.uri;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ResourceUpdated>, I>>(base?: I): ResourceUpdated {
+    return ResourceUpdated.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ResourceUpdated>, I>>(object: I): ResourceUpdated {
+    const message = createBaseResourceUpdated();
+    message.uri = object.uri ?? "";
+    return message;
+  },
+};
+
+function createBaseListenEvent(): ListenEvent {
+  return { event: undefined };
+}
+
+export const ListenEvent: MessageFns<ListenEvent> = {
+  encode(message: ListenEvent, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    switch (message.event?.$case) {
+      case "acknowledged":
+        NotificationFilter.encode(message.event.acknowledged, writer.uint32(10).fork()).join();
+        break;
+      case "toolsListChanged":
+        ToolsListChanged.encode(message.event.toolsListChanged, writer.uint32(18).fork()).join();
+        break;
+      case "promptsListChanged":
+        PromptsListChanged.encode(message.event.promptsListChanged, writer.uint32(26).fork()).join();
+        break;
+      case "resourcesListChanged":
+        ResourcesListChanged.encode(message.event.resourcesListChanged, writer.uint32(34).fork()).join();
+        break;
+      case "resourceUpdated":
+        ResourceUpdated.encode(message.event.resourceUpdated, writer.uint32(42).fork()).join();
+        break;
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ListenEvent {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseListenEvent();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.event = { $case: "acknowledged", acknowledged: NotificationFilter.decode(reader, reader.uint32()) };
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.event = {
+            $case: "toolsListChanged",
+            toolsListChanged: ToolsListChanged.decode(reader, reader.uint32()),
+          };
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.event = {
+            $case: "promptsListChanged",
+            promptsListChanged: PromptsListChanged.decode(reader, reader.uint32()),
+          };
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.event = {
+            $case: "resourcesListChanged",
+            resourcesListChanged: ResourcesListChanged.decode(reader, reader.uint32()),
+          };
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.event = {
+            $case: "resourceUpdated",
+            resourceUpdated: ResourceUpdated.decode(reader, reader.uint32()),
+          };
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ListenEvent {
+    return {
+      event: isSet(object.acknowledged)
+        ? { $case: "acknowledged", acknowledged: NotificationFilter.fromJSON(object.acknowledged) }
+        : isSet(object.toolsListChanged)
+        ? { $case: "toolsListChanged", toolsListChanged: ToolsListChanged.fromJSON(object.toolsListChanged) }
+        : isSet(object.tools_list_changed)
+        ? { $case: "toolsListChanged", toolsListChanged: ToolsListChanged.fromJSON(object.tools_list_changed) }
+        : isSet(object.promptsListChanged)
+        ? { $case: "promptsListChanged", promptsListChanged: PromptsListChanged.fromJSON(object.promptsListChanged) }
+        : isSet(object.prompts_list_changed)
+        ? { $case: "promptsListChanged", promptsListChanged: PromptsListChanged.fromJSON(object.prompts_list_changed) }
+        : isSet(object.resourcesListChanged)
+        ? {
+          $case: "resourcesListChanged",
+          resourcesListChanged: ResourcesListChanged.fromJSON(object.resourcesListChanged),
+        }
+        : isSet(object.resources_list_changed)
+        ? {
+          $case: "resourcesListChanged",
+          resourcesListChanged: ResourcesListChanged.fromJSON(object.resources_list_changed),
+        }
+        : isSet(object.resourceUpdated)
+        ? { $case: "resourceUpdated", resourceUpdated: ResourceUpdated.fromJSON(object.resourceUpdated) }
+        : isSet(object.resource_updated)
+        ? { $case: "resourceUpdated", resourceUpdated: ResourceUpdated.fromJSON(object.resource_updated) }
+        : undefined,
+    };
+  },
+
+  toJSON(message: ListenEvent): unknown {
+    const obj: any = {};
+    if (message.event?.$case === "acknowledged") {
+      obj.acknowledged = NotificationFilter.toJSON(message.event.acknowledged);
+    } else if (message.event?.$case === "toolsListChanged") {
+      obj.toolsListChanged = ToolsListChanged.toJSON(message.event.toolsListChanged);
+    } else if (message.event?.$case === "promptsListChanged") {
+      obj.promptsListChanged = PromptsListChanged.toJSON(message.event.promptsListChanged);
+    } else if (message.event?.$case === "resourcesListChanged") {
+      obj.resourcesListChanged = ResourcesListChanged.toJSON(message.event.resourcesListChanged);
+    } else if (message.event?.$case === "resourceUpdated") {
+      obj.resourceUpdated = ResourceUpdated.toJSON(message.event.resourceUpdated);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ListenEvent>, I>>(base?: I): ListenEvent {
+    return ListenEvent.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ListenEvent>, I>>(object: I): ListenEvent {
+    const message = createBaseListenEvent();
+    switch (object.event?.$case) {
+      case "acknowledged": {
+        if (object.event?.acknowledged !== undefined && object.event?.acknowledged !== null) {
+          message.event = {
+            $case: "acknowledged",
+            acknowledged: NotificationFilter.fromPartial(object.event.acknowledged),
+          };
+        }
+        break;
+      }
+      case "toolsListChanged": {
+        if (object.event?.toolsListChanged !== undefined && object.event?.toolsListChanged !== null) {
+          message.event = {
+            $case: "toolsListChanged",
+            toolsListChanged: ToolsListChanged.fromPartial(object.event.toolsListChanged),
+          };
+        }
+        break;
+      }
+      case "promptsListChanged": {
+        if (object.event?.promptsListChanged !== undefined && object.event?.promptsListChanged !== null) {
+          message.event = {
+            $case: "promptsListChanged",
+            promptsListChanged: PromptsListChanged.fromPartial(object.event.promptsListChanged),
+          };
+        }
+        break;
+      }
+      case "resourcesListChanged": {
+        if (object.event?.resourcesListChanged !== undefined && object.event?.resourcesListChanged !== null) {
+          message.event = {
+            $case: "resourcesListChanged",
+            resourcesListChanged: ResourcesListChanged.fromPartial(object.event.resourcesListChanged),
+          };
+        }
+        break;
+      }
+      case "resourceUpdated": {
+        if (object.event?.resourceUpdated !== undefined && object.event?.resourceUpdated !== null) {
+          message.event = {
+            $case: "resourceUpdated",
+            resourceUpdated: ResourceUpdated.fromPartial(object.event.resourceUpdated),
+          };
+        }
+        break;
+      }
+    }
+    return message;
+  },
+};
+
 /**
  * RapidMCP protocol v2 — MCP 2026-07-28 semantics over gRPC.
  * Stateless: every request carries its own RequestMeta; nothing is inferred
@@ -6293,6 +6919,14 @@ export const McpDefinition = {
       responseStream: true,
       options: {},
     },
+    listen: {
+      name: "Listen",
+      requestType: ListenRequest as typeof ListenRequest,
+      requestStream: false,
+      responseType: ListenEvent as typeof ListenEvent,
+      responseStream: true,
+      options: {},
+    },
   },
 } as const;
 
@@ -6324,6 +6958,10 @@ export interface McpServiceImplementation<CallContextExt = {}> {
     request: GetPromptRequest,
     context: CallContext & CallContextExt,
   ): ServerStreamingMethodResult<DeepPartial<GetPromptEvent>>;
+  listen(
+    request: ListenRequest,
+    context: CallContext & CallContextExt,
+  ): ServerStreamingMethodResult<DeepPartial<ListenEvent>>;
 }
 
 export interface McpClient<CallOptionsExt = {}> {
@@ -6351,6 +6989,7 @@ export interface McpClient<CallOptionsExt = {}> {
     request: DeepPartial<GetPromptRequest>,
     options?: CallOptions & CallOptionsExt,
   ): AsyncIterable<GetPromptEvent>;
+  listen(request: DeepPartial<ListenRequest>, options?: CallOptions & CallOptionsExt): AsyncIterable<ListenEvent>;
 }
 
 function bytesFromBase64(b64: string): Uint8Array {
