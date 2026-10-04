@@ -20,7 +20,7 @@ gRPC-native MCP (Model Context Protocol) library. Instead of JSON-RPC over HTTP,
 # Python
 cd python
 uv sync --extra dev          # install all deps
-uv run pytest -v             # run all 234 tests
+uv run pytest -v             # run all tests (Docker-backed files need Docker)
 uv run pytest tests/test_integration.py -v   # integration only
 uv run pytest tests/test_middleware.py -v    # middleware only
 uv run pytest tests/test_mounting.py -v      # mounting only
@@ -31,8 +31,8 @@ uv run ty check              # type check (non-blocking)
 # TypeScript
 cd typescript
 npm install                  # install deps
-npx vitest run               # run all 103 tests
-npx tsc --noEmit             # type check
+npx vitest run               # run all tests
+npx tsc -p tsconfig.build.json --noEmit   # type check the library
 ```
 
 ## Public API (current)
@@ -75,11 +75,15 @@ TypeScript mirrors this shape — `RapidMCPClient` from `rapidmcp/integrations/l
 ## Project structure
 
 ```
-proto/mcp.proto                    ← single source of truth for all messages
+proto/mcp.proto                    ← v1: one bidi session stream (frozen, fixes only)
+proto/mcp_v2.proto                 ← v2: stateless, one RPC per operation (MCP 2026-07-28)
 python/
   src/rapidmcp/
     server.py                      ← RapidMCP, mount(), decorators
-    _servicer.py                   ← _McpServicer (gRPC session handler)
+    _servicer.py                   ← _McpServicer (v1 session handler)
+    _v2_servicer.py                ← _McpV2Servicer (v2 RPCs), with _v2_context.py, _v2_state.py,
+                                     _v2_listen.py, _v2_errors.py; _v2_client.py is the client transport
+    icons.py                       ← Icon
     client.py                      ← Client, ListResult, sampling/elicitation/roots handlers
     context.py                     ← Context (explicit DI per tool call)
     middleware.py                  ← Middleware, ToolCallContext, TimingMiddleware,
@@ -118,7 +122,9 @@ typescript/
   src/
     server.ts                      ← RapidMCP server
     client.ts                      ← Client
-    servicer.ts                    ← gRPC session handler
+    servicer.ts                    ← v1 session handler
+    v2/                            ← v2 servicer, context, state, listeners, errors, client transport
+    icons.ts                       ← Icon
     context.ts                     ← Context (explicit DI)
     middleware.ts                  ← Middleware chain
     session.ts                     ← PendingRequests
@@ -131,27 +137,24 @@ typescript/
     prompts/                       ← PromptManager
     integrations/
       langchain.ts                 ← LangChain tool adapter
-  tests/                           ← 103 tests
+  tests/                           ← vitest suites (v2-*.test.ts cover the v2 protocol)
 benchmark/                         ← latency harness vs FastMCP HTTP
 ```
 
-## Current state (2026-04-14)
+## Current state (2026-10-04)
 
-- **234 Python tests + 103 TypeScript tests passing**
-- Full MCP spec parity: tools, resources, resource templates, prompts, completions, pagination, sampling, elicitation, logging, progress, notifications (bidirectional), cancellation, resource subscribe, roots, capability negotiation, ping/pong
-- Middleware system: `Middleware` base class, `ToolCallContext`, `functools.partial` chain, built-ins: `TimingMiddleware`, `LoggingMiddleware`, `TimeoutMiddleware`, `ValidationMiddleware`
-- Server composition: `main.mount(sub, prefix="x")` — merges tools/resources/prompts with prefix
-- CLI: `rapidmcp run server.py` / `rapidmcp run server.py:my_app` / `rapidmcp version`
-- LiveKit integration: `MCPServerGRPC` adapter for `livekit-agents`
-- LangChain integration: Python + TypeScript adapters
-- TLS/mTLS auth support
-- Rich elicitation helpers: typed field builders (`BoolField`, `IntField`, `StringField`, `EnumField`, `FloatField`)
-- Content helpers: `Audio`, `Image` for binary content in tool responses
-- TypeScript server with full feature parity
+- **453 Python tests + 312 TypeScript tests passing** (Docker-backed files excluded)
+- Two protocols on one port. v1 (`mcp.Mcp/Session`) is the original bidi stream and is frozen. v2 (`mcp.v2.Mcp`) follows MCP 2026-07-28: stateless, per-request metadata, one RPC per operation, streaming calls for progress/logs, input-required rounds for elicitation (signed `request_state`), one opt-in `Listen` stream for notifications, cache hints, icons, trace context, structured tool results
+- `Client(mode="legacy" | "modern" | "auto")`; default `legacy`. Sampling and roots are v1 only
+- Design: `docs/superpowers/specs/2026-10-01-proto-v2-stateless-design.md`; release note: `docs/breaking-changes-next-release.md`
+- Regenerate v2 stubs only: `python generate.py mcp_v2.proto` and `npm run generate -- --path ../proto/mcp_v2.proto`. Never regenerate v1
+- Cross-language tests: `python/tests/test_interop_typescript.py`, `typescript/tests/interop-python.test.ts`
+- Middleware, server composition (`mount`), CLI, LiveKit and LangChain integrations, TLS/mTLS and token auth, elicitation field helpers, `Audio` / `Image` content — as before, in both languages
 
 ## Architecture notes
 
-- **One service, one bidi streaming RPC.** `Session(stream ClientEnvelope) returns (stream ServerEnvelope)` — all messages over one stream.
+- **v1: one service, one bidi streaming RPC.** `Session(stream ClientEnvelope) returns (stream ServerEnvelope)` — all messages over one stream.
+- **v2: stateless.** Every handler reads what it needs from the request's own `meta` and the registries. MCP errors are a gRPC status plus `mcp-error-code` / `mcp-error-data-bin` trailers. On v2 a tool that elicits is re-run from the top with the answers.
 - **Write-queue servicer.** Concurrent reader/writer tasks per session. Enables server push notifications, mid-handler sampling/elicitation, and concurrent tool execution.
 - **Context as explicit DI.** `ctx: Context` is injected only when a tool declares it. Unlike FastMCP which pulls Context from a ContextVar set by the JSON-RPC run loop, RapidMCP's Context is constructed per-call and passed explicitly — so `ToolCallContext.ctx` is `None` for tools that didn't opt in.
 - **Middleware chain.** `functools.partial` reversed registration order. First-registered = outermost. Base of chain is `_call_tool_with_dict`.

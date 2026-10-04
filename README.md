@@ -219,6 +219,27 @@ main.mount(users_server, prefix="users")
 main.run(port=50051)
 ```
 
+### Protocol v2 (MCP 2026-07-28, experimental)
+
+Servers answer two services on the same port: the original session stream, and
+a stateless one that follows MCP 2026-07-28 (one RPC per operation, no
+handshake). Clients choose with `mode`:
+
+```python
+async with Client("localhost:50051", mode="modern") as client:   # or "auto", default "legacy"
+    tools = await client.list_tools()          # tools.ttl_ms / tools.cache_scope: freshness hint
+    result = await client.call_tool("add", {"a": 2, "b": 3})
+    result.structured_content                  # {"sum": 5} when the tool returns an object
+```
+
+On v2, `ctx.elicit()` ends the call with "input required"; the client asks its
+elicitation handler and calls again, and the tool runs again from the top, so
+ask before acting. Notifications arrive through one opt-in stream covering the
+handlers and resource URIs the client registered. Servers can set cache hints
+(`cache_ttl`, `cache_scope`) and icons; clients can pass a `trace_context`
+provider, which tools read as `ctx.trace_context`. Sampling and roots exist on
+v1 only. Run more than one replica with a shared `state_secret`.
+
 ### CLI
 
 ```bash
@@ -247,6 +268,8 @@ rapidmcp version
 | Cancellation | ✅ |
 | Capability negotiation | ✅ |
 | Ping/Pong | ✅ |
+| MCP 2026-07-28 stateless protocol (`mode="modern"`) | ✅ experimental |
+| Structured tool results, cache hints, icons, trace context (v2) | ✅ |
 | Middleware (`on_tool_call` chain) | ✅ |
 | Server mounting / composition | ✅ |
 | CLI (`rapidmcp run server.py`) | ✅ |

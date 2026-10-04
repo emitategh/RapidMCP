@@ -5,9 +5,10 @@ listed (tersely) under `[Unreleased]` in `CHANGELOG.md`; this file is the versio
 with the "what do I have to change" part, meant to be pasted into the release
 notes when the packages are built.
 
-The wire format did not change — `proto/mcp.proto` is untouched — so old clients
+The v1 wire format did not change — `proto/mcp.proto` is untouched — so old clients
 keep talking to new servers and the other way round. What changed is behaviour
-on top of the wire.
+on top of the wire, plus a second, additive service (`proto/mcp_v2.proto`) that
+follows MCP 2026-07-28; see "Protocol v2" below.
 
 ## Before building
 
@@ -20,6 +21,35 @@ on top of the wire.
       they were not run while these changes were made.
 - [ ] Update `CLAUDE.md` and the READMEs (test counts, TypeScript feature list, new options).
 - [ ] Decide the two open questions at the bottom of this file.
+
+## Protocol v2 (additive, experimental)
+
+Every server now also answers `mcp.v2.Mcp`, a stateless service that follows MCP
+2026-07-28: no handshake, one RPC per operation, the protocol version and client
+capabilities on every request. Nothing has to change to keep using v1 — the
+client default is still the v1 stream (`mode="legacy"`).
+
+| | v1 (`mcp.Mcp/Session`) | v2 (`mcp.v2.Mcp`) |
+|---|---|---|
+| Connection | one long-lived stream, handshake first | one RPC per operation, no handshake |
+| Progress and logs | pushed on the session | on the call's own stream, only if the request asked |
+| Elicitation | server asks mid-call | call ends with "input required"; the client answers and calls again, and **the tool runs again from the top** |
+| Notifications | every session gets every broadcast | one opt-in `Listen` stream, filtered to what the client registered |
+| Errors | error envelope | gRPC status plus `mcp-error-code` trailer; same `McpError` in both clients |
+| Sampling, roots | supported (deprecated) | not available: `-32601` |
+| Cache hints, icons, trace context, unset annotation hints | no | yes |
+
+What to know before turning on `mode="modern"` / `mode: "modern"`:
+
+- **Tools that elicit must ask before they act.** Anything done before
+  `ctx.elicit()` is done again on the retry. Give each question a stable `key`
+  when a tool asks more than one.
+- **Set `state_secret` / `stateSecret`** when more than one replica serves the
+  same clients; otherwise a retry that lands on another replica is rejected.
+- **`cancel()` and `notify_roots_list_changed()` raise `-32601`** on v2. Cancel
+  a call by cancelling the task (Python) or aborting its signal (TypeScript).
+- **`mode="auto"`** probes v2 once and falls back to v1 against an old server.
+- v1 is frozen: it gets fixes, not features.
 
 ## Python (`rapidmcp`)
 
@@ -216,6 +246,9 @@ rejected with `-32602` before the tool runs.
   once with `McpError(503)` and `isConnected` turns `false`.
 - **Failing handlers are logged.** A notification handler that throws is
   written to `console.error` instead of surfacing as an unhandled rejection.
+- **`Client.subscribeResource()` returns a promise** that resolves once the
+  server has the subscription. Callers that ignored the return value need no
+  change.
 - **New direct dependency:** `@grpc/grpc-js` (it was already installed
   transitively through `nice-grpc`).
 
@@ -226,7 +259,10 @@ rejected with `-32602` before the tool runs.
    to `127.0.0.1`. Changing the default is one more breaking change (containers
    would need `--host 0.0.0.0`), so it is cheapest to do it in this release if
    it is going to be done at all.
-2. **Tool annotation hints.** `destructive_hint` / `open_world_hint` are plain
-   proto3 bools, so "not set" arrives as `false`, the opposite of the MCP
-   defaults. Fixing it needs `optional` fields in the proto and regenerated
-   stubs in both languages.
+2. **Tool annotation hints (v1 only).** On v1, `destructive_hint` /
+   `open_world_hint` are plain proto3 bools, so "not set" arrives as `false`,
+   the opposite of the MCP defaults. v2 sends unset hints as unset; v1 is
+   frozen, so the remaining question is only whether to document this.
+3. **Client default mode.** It is `legacy`. The v2 design says to move the
+   default to `auto` once v2 is complete, which it now is; doing so changes what
+   every existing client sends first.
