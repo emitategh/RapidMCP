@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### [Unreleased]
 
 ### Added
-- **Protocol v2 (experimental):** servers also answer the stateless `mcp.v2.Mcp` service, following MCP 2026-07-28 — discovery, lists, completion, and tool calls, resource reads and prompts as streaming RPCs with per-request progress and log messages, structured tool results, deadlines and cancellation. `Client(mode="modern")` speaks it; `mode="auto"` tries it and falls back to v1; the default stays `"legacy"`. `ctx.elicit()` works on v2 too, in form and URL mode: the call ends with "input required", the client asks its elicitation handler and calls again, and the tool runs again from the top — so ask before acting. Set `state_secret` / `stateSecret` when running more than one replica. Not on v2 yet: subscriptions
+- **Protocol v2 (experimental):** servers also answer the stateless `mcp.v2.Mcp` service, following MCP 2026-07-28 — discovery, lists, completion, and tool calls, resource reads and prompts as streaming RPCs with per-request progress and log messages, structured tool results, deadlines and cancellation. `Client(mode="modern")` speaks it; `mode="auto"` tries it and falls back to v1; the default stays `"legacy"`. `ctx.elicit()` works on v2 too, in form and URL mode: the call ends with "input required", the client asks its elicitation handler and calls again, and the tool runs again from the top — so ask before acting. Set `state_secret` / `stateSecret` when running more than one replica. List-changed and resource-updated notifications arrive through one opt-in `Listen` stream, opened for exactly the handlers and URIs the client registered
 - Plain `def` handlers for tools, resources and prompts (run in a worker thread)
 - `Client(request_timeout=...)`, `call_tool(..., timeout=...)`, and `timeout=` on `ctx.sample` / `ctx.elicit` / `ctx.list_roots` (`None` waits indefinitely)
 - `RapidMCP(host=...)`, `run(host=...)` and `rapidmcp run --host` (default unchanged: all interfaces)
@@ -151,7 +151,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### [Unreleased]
 
 ### Added
-- **Protocol v2 (experimental):** servers also answer the stateless `mcp.v2.Mcp` service, following MCP 2026-07-28 — discovery, lists, completion, and tool calls, resource reads and prompts as streaming RPCs with per-request progress and log messages, structured tool results, deadlines and cancellation. `new Client(addr, { mode: "modern" })` speaks it; `mode: "auto"` tries it and falls back to v1; the default stays `"legacy"`. `ctx.elicit()` works on v2 too, in form and URL mode: the call ends with "input required", the client asks its elicitation handler and calls again, and the tool runs again from the top — so ask before acting. Set `state_secret` / `stateSecret` when running more than one replica. Not on v2 yet: subscriptions
+- **Protocol v2 (experimental):** servers also answer the stateless `mcp.v2.Mcp` service, following MCP 2026-07-28 — discovery, lists, completion, and tool calls, resource reads and prompts as streaming RPCs with per-request progress and log messages, structured tool results, deadlines and cancellation. `new Client(addr, { mode: "modern" })` speaks it; `mode: "auto"` tries it and falls back to v1; the default stays `"legacy"`. `ctx.elicit()` works on v2 too, in form and URL mode: the call ends with "input required", the client asks its elicitation handler and calls again, and the tool runs again from the top — so ask before acting. Set `state_secret` / `stateSecret` when running more than one replica. List-changed and resource-updated notifications arrive through one opt-in `Listen` stream, opened for exactly the handlers and URIs the client registered
 - Server-side token auth (`new RapidMCP({ auth })`) and TLS/mTLS (`tls: { cert, key, ca? }`)
 - `mount(sub, { prefix })` — same naming and all-or-nothing collision rules as Python
 - `ctx.signal` — aborted when the client cancels the call, the call times out, or the session ends
@@ -163,6 +163,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `@grpc/grpc-js` is now a declared dependency
 
 ### Changed
+- `Client.subscribeResource()` returns a promise (it resolves once the server has the subscription); it used to return nothing
 - **BREAKING**: a tool that throws a plain `Error` is reported as `Error calling tool '<name>': <message>` (was the bare message); `ToolError` messages are still returned verbatim
 - **BREAKING**: request timeouts reject with `McpError` code `408` (was `-1`)
 - **BREAKING**: error codes sent by the server follow MCP / JSON-RPC — unknown tool, resource or prompt is `-32602` (was `404`) and a missing client capability is `-32021` (was `400`). `ErrorCode` is exported

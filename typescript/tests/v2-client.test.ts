@@ -112,7 +112,7 @@ describe("Client mode", () => {
 
     let err: unknown = null;
     try {
-      client.subscribeResource("res://a");
+      client.notifyRootsListChanged();
     } catch (e) {
       err = e;
     }

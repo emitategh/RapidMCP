@@ -9,6 +9,7 @@ import {
   type InputRequired,
   type InputResponse,
   type McpClient,
+  type NotificationFilter,
   type ReadResourceResult as WireReadResourceResult,
   type RequestMeta,
 } from "../../generated/mcp_v2.js";
@@ -341,5 +342,62 @@ export class V2Transport {
     return convertGetPromptResult(
       wire as unknown as Parameters<typeof convertGetPromptResult>[0],
     );
+  }
+
+  private async _dispatch(kind: string, payload: string): Promise<void> {
+    try {
+      await this._notifications.dispatch(kind, payload);
+    } catch (err) {
+      console.error(`[rapidmcp] notification handler for '${kind}' failed:`, err);
+    }
+  }
+
+  /**
+   * Hold a Listen stream open, handing its notifications to the registered
+   * handlers. Resolves once the server acknowledges the subscription; delivery
+   * continues until *signal* aborts.
+   */
+  listen(filter: NotificationFilter, signal: AbortSignal): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new McpError(ErrorCode.RequestTimeout, "Subscription was not acknowledged")),
+        this._timeoutMs,
+      );
+      const options: CallOptions = { signal };
+      if (this._opts.token) options.metadata = buildMetadata(this._opts);
+
+      void (async () => {
+        try {
+          for await (const message of this._client.listen({ meta: this._meta(), notifications: filter }, options)) {
+            const event = message.event;
+            if (!event) continue;
+            switch (event.$case) {
+              case "acknowledged":
+                clearTimeout(timer);
+                resolve();
+                break;
+              case "toolsListChanged":
+                await this._dispatch("tools_list_changed", "");
+                break;
+              case "promptsListChanged":
+                await this._dispatch("prompts_list_changed", "");
+                break;
+              case "resourcesListChanged":
+                await this._dispatch("resources_list_changed", "");
+                break;
+              case "resourceUpdated":
+                await this._dispatch("resource_updated", JSON.stringify({ uri: event.resourceUpdated.uri }));
+                break;
+            }
+          }
+          resolve(); // ended without an acknowledgement: nothing more will come
+        } catch (err) {
+          if (!signal.aborted) console.warn("[rapidmcp] subscription stream ended:", err);
+          resolve();
+        } finally {
+          clearTimeout(timer);
+        }
+      })();
+    });
   }
 }

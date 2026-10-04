@@ -74,6 +74,8 @@ export class Client {
   private _connected = false;
   private _mode: "legacy" | "modern" | "auto";
   private _v2: V2Transport | null = null;
+  private _subscribedUris: string[] = [];
+  private _listenAbort: AbortController | null = null;
   /** True while a reader loop is consuming the current stream. */
   private _streamOpen = false;
   /** In-flight connect(), shared by concurrent callers. */
@@ -144,6 +146,7 @@ export class Client {
         this._serverInfo = await transport.discover();
         this._v2 = transport;
         this._connected = true;
+        await this._refreshListen();
         return;
       } catch (err) {
         if (!(this._mode === "auto" && isV2Missing(err))) {
@@ -349,9 +352,31 @@ export class Client {
     if (this._v2) {
       throw new McpError(
         ErrorCode.MethodNotFound,
-        `${operation} is not available on the v2 protocol yet; use mode: "legacy"`,
+        `${operation} is not part of the v2 protocol; use mode: "legacy"`,
       );
     }
+  }
+
+  /** (Re)open the v2 subscription so it matches the handlers and uris registered now. */
+  private async _refreshListen(): Promise<void> {
+    if (!this._v2) return;
+    this._listenAbort?.abort();
+    this._listenAbort = null;
+    const filter = {
+      toolsListChanged: this._notifications.has("tools_list_changed"),
+      promptsListChanged: this._notifications.has("prompts_list_changed"),
+      resourcesListChanged: this._notifications.has("resources_list_changed"),
+      resourceSubscriptions: [...this._subscribedUris],
+    };
+    const wantsAnything =
+      filter.toolsListChanged ||
+      filter.promptsListChanged ||
+      filter.resourcesListChanged ||
+      filter.resourceSubscriptions.length > 0;
+    if (!wantsAnything) return;
+    const controller = new AbortController();
+    this._listenAbort = controller;
+    await this._v2.listen(filter, controller.signal);
   }
 
   /** Fail now rather than at the request timeout when nothing is reading replies. */
@@ -473,8 +498,12 @@ export class Client {
     return convertReadResourceResult(resp);
   }
 
-  subscribeResource(uri: string): void {
-    this._v1Only("subscribeResource");
+  /** Ask for updates to one resource. Resolves once the server has the subscription. */
+  subscribeResource(uri: string): Promise<void> {
+    if (this._v2) {
+      if (!this._subscribedUris.includes(uri)) this._subscribedUris.push(uri);
+      return this._refreshListen();
+    }
     this._sendQueue.enqueue({
       requestId: 0n,
       message: {
@@ -482,6 +511,7 @@ export class Client {
         subscribeRes: { uri },
       },
     });
+    return Promise.resolve();
   }
 
   async listResourceTemplates(cursor?: string): Promise<ListResult<ResourceTemplate>> {
@@ -597,6 +627,10 @@ export class Client {
     handler: (payload: string) => void | Promise<void>,
   ): void {
     this._notifications.register(type, handler);
+    // Already connected over v2: widen the subscription in the background.
+    if (this._v2) {
+      this._refreshListen().catch((err) => console.warn("[rapidmcp] could not update subscription:", err));
+    }
   }
 
   /** Register a handler for server-initiated sampling requests. */
@@ -649,6 +683,8 @@ export class Client {
   /** Close the connection: close send stream, await reader, cancel pending, close channel. */
   async close(): Promise<void> {
     if (this._v2) {
+      this._listenAbort?.abort();
+      this._listenAbort = null;
       this._v2 = null;
       this._channel?.close();
       this._channel = null;
