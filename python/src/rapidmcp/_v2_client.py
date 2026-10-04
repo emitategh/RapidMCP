@@ -14,11 +14,12 @@ from rapidmcp._generated import mcp_pb2, mcp_v2_pb2_grpc
 from rapidmcp._generated import mcp_v2_pb2 as pb
 from rapidmcp._v2_errors import error_from_rpc
 from rapidmcp._version import __version__
-from rapidmcp.errors import INTERNAL_ERROR, METHOD_NOT_FOUND, McpError
+from rapidmcp.errors import INPUT_LOOP, INTERNAL_ERROR, MISSING_CLIENT_CAPABILITY, McpError
 from rapidmcp.session import NotificationRegistry
 from rapidmcp.types import (
     CallToolResult,
     CompleteResult,
+    ElicitRequestInfo,
     GetPromptResult,
     ListResult,
     ReadResourceResult,
@@ -36,6 +37,7 @@ from rapidmcp.types import (
 logger = logging.getLogger("rapidmcp.client")
 
 PROTOCOL_VERSION = "2026-07-28"
+MAX_INPUT_ROUNDS = 10
 
 
 class _V2Transport:
@@ -44,20 +46,22 @@ class _V2Transport:
         channel: aio.Channel,
         metadata: list[tuple[str, str]],
         timeout: float,
-        supports_elicitation: Callable[[], bool],
+        elicitation: Callable[[], tuple[Callable | None, bool]],
         notifications: NotificationRegistry,
     ) -> None:
         self._stub = mcp_v2_pb2_grpc.McpStub(channel)
         self._metadata = metadata
         self._timeout = timeout
-        self._supports_elicitation = supports_elicitation
+        # () -> (handler or None, whether it also handles URL mode)
+        self._elicitation = elicitation
         self._notifications = notifications
         self._progress_tokens = itertools.count(1)
 
     def _meta(self, *, events: bool = False) -> pb.RequestMeta:
         capabilities = pb.ClientCapabilities()
-        if self._supports_elicitation():
-            capabilities.elicitation.CopyFrom(pb.ElicitationCapability(form=True))
+        handler, handles_url = self._elicitation()
+        if handler is not None:
+            capabilities.elicitation.CopyFrom(pb.ElicitationCapability(form=True, url=handles_url))
         meta = pb.RequestMeta(
             protocol_version=PROTOCOL_VERSION,
             client_capabilities=capabilities,
@@ -178,12 +182,9 @@ class _V2Transport:
                         },
                     )
                 elif kind == "complete":
-                    return event.complete
+                    return kind, event.complete
                 elif kind == "input_required":
-                    raise McpError(
-                        METHOD_NOT_FOUND,
-                        "The server asked for input, which this client cannot give yet",
-                    )
+                    return kind, event.input_required
             raise McpError(INTERNAL_ERROR, "The server ended the call without a result")
         except aio.AioRpcError as exc:
             error = error_from_rpc(exc.code(), exc.details(), exc.trailing_metadata())
@@ -195,23 +196,77 @@ class _V2Transport:
             # (the awaiting task was cancelled, or a handler error escaped).
             call.cancel()
 
+    async def _answer(self, request: pb.InputRequest) -> pb.InputResponse:
+        handler, _ = self._elicitation()
+        if request.WhichOneof("request") != "elicit" or handler is None:
+            raise McpError(
+                MISSING_CLIENT_CAPABILITY, "The server asked for input this client cannot give"
+            )
+        asked = request.elicit
+        mode = asked.WhichOneof("mode") or "form"
+        reply = await handler(
+            ElicitRequestInfo(
+                message=asked.message,
+                schema=asked.form.requested_schema if mode == "form" else "",
+                mode=mode,
+                url=asked.url.url if mode == "url" else "",
+            )
+        )
+        return pb.InputResponse(
+            elicit=pb.ElicitResult(action=reply.action, content=getattr(reply, "content", "") or "")
+        )
+
+    async def _run(self, method, build_request, timeout: float | None = None):
+        """Call until the server has what it needs, answering its questions in between."""
+        responses: dict[str, pb.InputResponse] = {}
+        state = b""
+        for round_number in range(MAX_INPUT_ROUNDS + 1):
+            kind, message = await self._stream(method, build_request(responses, state), timeout)
+            if kind == "complete":
+                return message
+            if round_number == MAX_INPUT_ROUNDS:
+                break
+            responses = {
+                key: await self._answer(asked) for key, asked in message.input_requests.items()
+            }
+            state = message.request_state
+        raise McpError(INPUT_LOOP, f"The server asked for input more than {MAX_INPUT_ROUNDS} times")
+
     async def call_tool(
         self, name: str, arguments: dict | None, timeout: float | None
     ) -> CallToolResult:
-        request = pb.CallToolRequest(
-            meta=self._meta(events=True), name=name, arguments=json.dumps(arguments or {})
-        )
-        return _convert_call_tool_result_v2(
-            await self._stream(self._stub.CallTool, request, timeout)
-        )
+        text = json.dumps(arguments or {})  # the same text every round: the state is bound to it
+
+        def build(responses, state):
+            return pb.CallToolRequest(
+                meta=self._meta(events=True),
+                name=name,
+                arguments=text,
+                input_responses=responses,
+                request_state=state,
+            )
+
+        return _convert_call_tool_result_v2(await self._run(self._stub.CallTool, build, timeout))
 
     async def read_resource(self, uri: str) -> ReadResourceResult:
-        request = pb.ReadResourceRequest(meta=self._meta(), uri=uri)
-        return _convert_read_resource_result(await self._stream(self._stub.ReadResource, request))
+        def build(responses, state):
+            return pb.ReadResourceRequest(
+                meta=self._meta(), uri=uri, input_responses=responses, request_state=state
+            )
+
+        return _convert_read_resource_result(await self._run(self._stub.ReadResource, build))
 
     async def get_prompt(self, name: str, arguments: dict[str, str] | None) -> GetPromptResult:
-        request = pb.GetPromptRequest(meta=self._meta(), name=name, arguments=arguments or {})
-        return _convert_get_prompt_result(await self._stream(self._stub.GetPrompt, request))
+        def build(responses, state):
+            return pb.GetPromptRequest(
+                meta=self._meta(),
+                name=name,
+                arguments=arguments or {},
+                input_responses=responses,
+                request_state=state,
+            )
+
+        return _convert_get_prompt_result(await self._run(self._stub.GetPrompt, build))
 
 
 def is_v2_missing(exc: BaseException) -> bool:

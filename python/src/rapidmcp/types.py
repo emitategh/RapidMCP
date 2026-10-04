@@ -165,6 +165,20 @@ class CompleteResult:
 
 
 @dataclass
+class ElicitRequestInfo:
+    """What a v2 server asks the user; passed to the elicitation handler.
+
+    Has the same ``message`` and ``schema`` attributes as the v1 request, so a
+    handler written for v1 works unchanged.
+    """
+
+    message: str
+    schema: str = ""  # JSON Schema text, form mode only
+    mode: str = "form"  # "form" or "url"
+    url: str = ""  # URL mode only
+
+
+@dataclass
 class ListResult:
     """Result from a paginated list method."""
 

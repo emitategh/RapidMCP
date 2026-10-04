@@ -77,6 +77,7 @@ class Client:
         self.server_info: ServerInfo | None = None
         self._sampling_handler = None
         self._elicitation_handler = None
+        self._elicitation_url = False
         self._roots_handler = None
         self._write_queue: asyncio.Queue[mcp_pb2.ClientEnvelope | None] | None = None
         self._background_tasks: set[asyncio.Task] = set()
@@ -86,8 +87,15 @@ class Client:
     def set_sampling_handler(self, handler) -> None:
         self._sampling_handler = handler
 
-    def set_elicitation_handler(self, handler) -> None:
+    def set_elicitation_handler(self, handler, *, url: bool = False) -> None:
+        """Answer the server's questions.
+
+        *handler* receives the request (``.message``, ``.schema``; on v2 also
+        ``.mode`` and ``.url``) and returns an object with ``.action`` and
+        ``.content``. Pass ``url=True`` if it can also send the user to a URL.
+        """
         self._elicitation_handler = handler
+        self._elicitation_url = url
 
     def set_roots_handler(self, handler) -> None:
         self._roots_handler = handler
@@ -132,7 +140,7 @@ class Client:
             self._channel,
             self._metadata,
             self._request_timeout,
-            supports_elicitation=lambda: self._elicitation_handler is not None,
+            elicitation=lambda: (self._elicitation_handler, self._elicitation_url),
             notifications=self._notifications,
         )
         try:
