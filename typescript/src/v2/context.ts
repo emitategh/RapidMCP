@@ -48,6 +48,8 @@ export class V2Context {
     /** Aborted when the client cancels the call or its deadline passes. */
     public readonly signal: AbortSignal,
     private readonly _answers: Answers = {},
+    /** W3C trace context of the request: traceparent, tracestate, baggage. */
+    public readonly traceContext: Record<string, string> = {},
   ) {
     this.log = {
       debug: (message) => this._log("debug", message),

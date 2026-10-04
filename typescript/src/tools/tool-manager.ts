@@ -1,3 +1,4 @@
+import { checkedIcons } from "../icons.js";
 import type { ToolConfig, RegisteredTool } from "./tool.js";
 import { isContentResult, toContentItems } from "../_utils.js";
 import { ErrorCode, McpError, ToolError } from "../errors.js";
@@ -39,6 +40,7 @@ export class ToolManager {
       handler: config.execute,
       annotations: config.annotations,
       zodSchema: config.parameters,
+      icons: checkedIcons(config.icons),
     });
   }
 

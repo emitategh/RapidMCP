@@ -7,7 +7,6 @@
  */
 import type { CallContext } from "nice-grpc-common";
 import {
-  CacheScope,
   type CacheHint,
   type CallToolEvent,
   type CallToolRequest,
@@ -41,6 +40,7 @@ import { Middleware, type CallToolResult, type ToolCallContext } from "../middle
 import { AsyncQueue } from "../session.js";
 import { LOG_LEVELS, NeedsInput, V2Context } from "./context.js";
 import type { Listeners } from "./listeners.js";
+import { wireIcons, type Icon } from "../icons.js";
 import { operationDigest, principalDigest, seal, unseal, type Answers } from "./state.js";
 import { ErrorCode, McpError } from "../errors.js";
 import type { PromptManager } from "../prompts/prompt-manager.js";
@@ -68,9 +68,11 @@ export interface McpV2ServicerOptions {
   listeners: Listeners;
   /** Called with each uri a Listen request subscribes to. */
   subscribeHandlers: Array<(uri: string) => void | Promise<void>>;
+  /** Freshness hint stamped on every cacheable result. */
+  cache: CacheHint;
+  /** The server's own icons, sent with discover. */
+  icons: Icon[];
 }
-
-const NO_CACHE: CacheHint = { ttlMs: 0n, scope: CacheScope.CACHE_SCOPE_PRIVATE };
 
 export class McpV2Servicer implements McpServiceImplementation {
   constructor(private readonly _opts: McpV2ServicerOptions) {}
@@ -135,14 +137,16 @@ export class McpV2Servicer implements McpServiceImplementation {
       resourceManager.listResources().length > 0 ||
       resourceManager.listResourceTemplates().length > 0;
     return {
-      meta: this._resultMeta(),
+      meta: {
+        serverInfo: { name: this._opts.name, version: this._opts.version, icons: wireIcons(this._opts.icons) },
+      },
       supportedVersions: SUPPORTED_VERSIONS,
       capabilities: {
         tools: toolManager.listTools().length > 0 ? { listChanged: true } : undefined,
         resources: hasResources ? { listChanged: true, subscribe: true } : undefined,
         prompts: promptManager.listPrompts().length > 0 ? { listChanged: true } : undefined,
       },
-      cache: NO_CACHE,
+      cache: this._opts.cache,
     };
   }
 
@@ -156,6 +160,7 @@ export class McpV2Servicer implements McpServiceImplementation {
       description: t.description,
       inputSchema: t.inputSchema,
       outputSchema: t.outputSchema,
+      icons: wireIcons(t.icons),
       // Only the hints the author actually set go on the wire.
       annotations: t.annotations
         ? {
@@ -168,7 +173,7 @@ export class McpV2Servicer implements McpServiceImplementation {
         : undefined,
     }));
     const [page, nextCursor] = paginate(tools, request.cursor, this._opts.pageSize);
-    return { meta: this._resultMeta(), tools: page, nextCursor, cache: NO_CACHE };
+    return { meta: this._resultMeta(), tools: page, nextCursor, cache: this._opts.cache };
   }
 
   async listResources(
@@ -181,9 +186,10 @@ export class McpV2Servicer implements McpServiceImplementation {
       name: r.name,
       description: r.description,
       mimeType: r.mimeType,
+      icons: wireIcons(r.icons),
     }));
     const [page, nextCursor] = paginate(resources, request.cursor, this._opts.pageSize);
-    return { meta: this._resultMeta(), resources: page, nextCursor, cache: NO_CACHE };
+    return { meta: this._resultMeta(), resources: page, nextCursor, cache: this._opts.cache };
   }
 
   async listResourceTemplates(
@@ -196,9 +202,10 @@ export class McpV2Servicer implements McpServiceImplementation {
       name: t.name,
       description: t.description,
       mimeType: t.mimeType,
+      icons: wireIcons(t.icons),
     }));
     const [page, nextCursor] = paginate(templates, request.cursor, this._opts.pageSize);
-    return { meta: this._resultMeta(), templates: page, nextCursor, cache: NO_CACHE };
+    return { meta: this._resultMeta(), templates: page, nextCursor, cache: this._opts.cache };
   }
 
   async listPrompts(
@@ -214,9 +221,10 @@ export class McpV2Servicer implements McpServiceImplementation {
         description: a.description ?? "",
         required: a.required ?? false,
       })),
+      icons: wireIcons(p.icons),
     }));
     const [page, nextCursor] = paginate(prompts, request.cursor, this._opts.pageSize);
-    return { meta: this._resultMeta(), prompts: page, nextCursor, cache: NO_CACHE };
+    return { meta: this._resultMeta(), prompts: page, nextCursor, cache: this._opts.cache };
   }
 
   async complete(
@@ -301,7 +309,18 @@ export class McpV2Servicer implements McpServiceImplementation {
     // everything emitted before the tool settles is delivered before its result.
     const DONE = Symbol("done");
     const queue = new AsyncQueue<DeepPartial<CallToolEvent> | typeof DONE>();
-    const ctx = new V2Context(request.meta!, (event) => queue.enqueue(event), context.signal, answers);
+    const traceContext: Record<string, string> = {};
+    for (const key of ["traceparent", "tracestate", "baggage"]) {
+      const value = context.metadata.get(key);
+      if (typeof value === "string") traceContext[key] = value;
+    }
+    const ctx = new V2Context(
+      request.meta!,
+      (event) => queue.enqueue(event),
+      context.signal,
+      answers,
+      traceContext,
+    );
     const stop = () => queue.enqueue(DONE);
     context.signal.addEventListener("abort", stop, { once: true });
 
@@ -364,7 +383,7 @@ export class McpV2Servicer implements McpServiceImplementation {
     } catch (err) {
       throw this._failure(err, `Resource handler for '${request.uri}' failed`, context);
     }
-    yield { event: { $case: "complete", complete: { meta: this._resultMeta(), content, cache: NO_CACHE } } };
+    yield { event: { $case: "complete", complete: { meta: this._resultMeta(), content, cache: this._opts.cache } } };
   }
 
   async *getPrompt(

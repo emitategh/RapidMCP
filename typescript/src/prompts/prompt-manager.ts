@@ -1,3 +1,4 @@
+import { checkedIcons } from "../icons.js";
 import type { PromptConfig, RegisteredPrompt, CompletionResult } from "./prompt.js";
 import { ErrorCode, McpError } from "../errors.js";
 
@@ -9,6 +10,7 @@ export class PromptManager {
       name: config.name,
       description: config.description ?? "",
       arguments: config.arguments ?? [],
+      icons: checkedIcons(config.icons),
       load: config.load,
     });
   }

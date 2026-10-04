@@ -79,7 +79,7 @@ describe("the v2 service", () => {
 
     const result = await v2.discover({ meta: META });
 
-    expect(result.meta?.serverInfo).toEqual({ name: "v2-server", version: "1.2.3" });
+    expect(result.meta?.serverInfo).toEqual({ name: "v2-server", version: "1.2.3", icons: [] });
     expect(result.supportedVersions).toEqual(["2026-07-28"]);
     expect(result.capabilities?.tools?.listChanged).toBe(true);
     expect(result.capabilities?.resources).toBeDefined();

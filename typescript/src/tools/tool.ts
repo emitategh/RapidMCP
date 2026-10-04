@@ -8,6 +8,8 @@ export interface ToolAnnotationsConfig {
   openWorld?: boolean;
 }
 
+import type { Icon } from "../icons.js";
+
 export interface ToolConfig<T = any> {
   name: string;
   description?: string;
@@ -15,6 +17,8 @@ export interface ToolConfig<T = any> {
   /** Shape of the structured result: a zod schema or a plain JSON Schema object. */
   outputSchema?: ZodType | Record<string, unknown>;
   annotations?: ToolAnnotationsConfig;
+  /** Icons a client may show for the tool (https: or data: sources). */
+  icons?: Icon[];
   execute: (args: T, ctx: any) => Promise<unknown>;
 }
 
@@ -26,4 +30,5 @@ export interface RegisteredTool {
   handler: (args: any, ctx: any) => Promise<unknown>;
   annotations?: ToolAnnotationsConfig;
   zodSchema?: ZodType;
+  icons: Icon[];
 }

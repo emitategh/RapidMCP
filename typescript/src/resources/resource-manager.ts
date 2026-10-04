@@ -1,3 +1,4 @@
+import { checkedIcons } from "../icons.js";
 import type {
   ResourceConfig,
   RegisteredResource,
@@ -37,6 +38,7 @@ export class ResourceManager {
       name: config.name,
       description: config.description ?? "",
       mimeType: config.mimeType ?? "text/plain",
+      icons: checkedIcons(config.icons),
       load: config.load,
     });
   }
@@ -47,6 +49,7 @@ export class ResourceManager {
       name: config.name,
       description: config.description ?? "",
       mimeType: config.mimeType ?? "text/plain",
+      icons: checkedIcons(config.icons),
       arguments: config.arguments ?? [],
       load: config.load,
     });

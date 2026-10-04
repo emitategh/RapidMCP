@@ -40,3 +40,4 @@ export {
 export { type ToolConfig, type ToolAnnotationsConfig } from "./tools/tool.js";
 export { type ResourceConfig, type ResourceTemplateConfig } from "./resources/resource.js";
 export { type PromptConfig, type PromptArgumentConfig } from "./prompts/prompt.js";
+export { type Icon } from "./icons.js";

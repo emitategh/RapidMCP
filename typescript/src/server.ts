@@ -16,7 +16,8 @@ import { ToolManager } from "./tools/tool-manager.js";
 import { ResourceManager } from "./resources/resource-manager.js";
 import { PromptManager } from "./prompts/prompt-manager.js";
 import { McpServicer } from "./servicer.js";
-import { McpDefinition as McpV2Definition } from "../generated/mcp_v2.js";
+import { CacheScope, McpDefinition as McpV2Definition, type CacheHint } from "../generated/mcp_v2.js";
+import { checkedIcons, type Icon } from "./icons.js";
 import { McpV2Servicer } from "./v2/servicer.js";
 import { Listeners } from "./v2/listeners.js";
 import { AsyncQueue } from "./session.js";
@@ -44,6 +45,12 @@ export interface RapidMCPOptions {
   stateSecret?: string | Uint8Array;
   /** Report "Error calling tool 'x'" without the exception text (ToolError messages still pass). */
   maskErrorDetails?: boolean;
+  /** How long clients may treat lists and resource reads as fresh, in ms. Default 0: always refetch. */
+  cacheTtlMs?: number;
+  /** Whether shared intermediaries may cache those results. Default "private". */
+  cacheScope?: "private" | "public";
+  /** Icons for the server itself, sent with discover. */
+  icons?: Icon[];
 }
 
 export interface ListenOptions {
@@ -59,6 +66,8 @@ export class RapidMCP {
   private _tls: ServerTlsConfig | undefined;
   private _stateSecret: Uint8Array;
   private _stateSecretConfigured: boolean;
+  private _cache: CacheHint;
+  private _icons: Icon[];
 
   private _toolManager: ToolManager;
   private _resourceManager = new ResourceManager();
@@ -84,6 +93,17 @@ export class RapidMCP {
         : typeof opts.stateSecret === "string"
           ? new TextEncoder().encode(opts.stateSecret)
           : opts.stateSecret;
+    const cacheTtlMs = opts.cacheTtlMs ?? 0;
+    const cacheScope = opts.cacheScope ?? "private";
+    if (!(cacheTtlMs >= 0)) throw new Error(`cacheTtlMs must be 0 or more, got ${cacheTtlMs}`);
+    if (cacheScope !== "private" && cacheScope !== "public") {
+      throw new Error(`cacheScope must be "private" or "public", got ${JSON.stringify(cacheScope)}`);
+    }
+    this._cache = {
+      ttlMs: BigInt(Math.floor(cacheTtlMs)),
+      scope: cacheScope === "public" ? CacheScope.CACHE_SCOPE_PUBLIC : CacheScope.CACHE_SCOPE_PRIVATE,
+    };
+    this._icons = checkedIcons(opts.icons);
     this._toolManager = new ToolManager({ maskErrorDetails: opts.maskErrorDetails });
   }
 
@@ -205,6 +225,8 @@ export class RapidMCP {
       authEnabled: this._auth !== undefined,
       listeners: this._listeners,
       subscribeHandlers: this._subscribeHandlers,
+      cache: this._cache,
+      icons: this._icons,
     });
 
     this._server = createServer();

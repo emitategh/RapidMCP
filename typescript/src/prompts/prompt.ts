@@ -1,3 +1,5 @@
+import type { Icon } from "../icons.js";
+
 export interface CompletionResult {
   values: string[];
   hasMore?: boolean;
@@ -15,6 +17,7 @@ export interface PromptConfig {
   name: string;
   description?: string;
   arguments?: PromptArgumentConfig[];
+  icons?: Icon[];
   load: (args: Record<string, string>) => Promise<string>;
 }
 
@@ -22,5 +25,6 @@ export interface RegisteredPrompt {
   name: string;
   description: string;
   arguments: PromptArgumentConfig[];
+  icons: Icon[];
   load: (args: Record<string, string>) => Promise<string>;
 }

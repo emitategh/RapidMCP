@@ -1,3 +1,5 @@
+import type { Icon } from "../icons.js";
+
 export interface ResourceLoadResult {
   text?: string;
   /** Binary content: raw bytes, or a base64-encoded string. */
@@ -9,6 +11,7 @@ export interface ResourceConfig {
   name: string;
   description?: string;
   mimeType?: string;
+  icons?: Icon[];
   load: () => Promise<ResourceLoadResult>;
 }
 
@@ -17,6 +20,7 @@ export interface RegisteredResource {
   name: string;
   description: string;
   mimeType: string;
+  icons: Icon[];
   load: () => Promise<ResourceLoadResult>;
 }
 
@@ -31,6 +35,7 @@ export interface ResourceTemplateConfig {
   name: string;
   description?: string;
   mimeType?: string;
+  icons?: Icon[];
   arguments?: ResourceTemplateArgument[];
   load: (args: Record<string, string>) => Promise<ResourceLoadResult>;
 }
@@ -40,6 +45,7 @@ export interface RegisteredResourceTemplate {
   name: string;
   description: string;
   mimeType: string;
+  icons: Icon[];
   arguments: ResourceTemplateArgument[];
   load: (args: Record<string, string>) => Promise<ResourceLoadResult>;
 }
