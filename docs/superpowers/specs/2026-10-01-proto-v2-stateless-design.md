@@ -450,6 +450,34 @@ The first implementation plan covers phase 1 only.
   at the wire layer. Sharing the managers and `Context` interface limits this
   to the servicer and client transport.
 
+## Addendum (2026-10-04): what "implement all missing" adds
+
+The owner asked for everything the standard has and RapidMCP lacks. Phases 2–5
+above cover most of it. Three items were in neither version and are added here.
+JSON-RPC framing, the stdio and HTTP transports, OAuth, the Tasks extension and
+MCP Apps stay out of scope, for the reason given under "Out of scope".
+
+**Structured tool results (phase 2).** A v2 `CallToolResult` carries
+`structured_content`, the tool's result as JSON text, next to `content`. A tool
+that returns a JSON object (a `dict` in Python, a plain object in TypeScript)
+gets both: the object as structured content and the same JSON as a text block,
+which is what the standard asks for so older clients still see something. The
+result is not validated against the tool's output schema; that stays the
+author's responsibility. v1 is unchanged.
+
+**Trace context (phase 5).** `traceparent`, `tracestate` and `baggage` travel as
+gRPC metadata on v2 calls. The client takes a `trace_context` provider, called
+once per request; the server exposes what arrived as `ctx.trace_context`.
+RapidMCP only carries the values; creating spans is left to the application's
+OpenTelemetry setup.
+
+**Icons (phase 5).** Tools, resources, resource templates, prompts and the
+server itself can declare `icons` (`src`, `mime_type`, `sizes`, `theme`), sent
+on v2 only. The standard's rules for consuming icons (HTTPS or `data:` only,
+same origin, no credentials) are the client application's to enforce; the
+library validates the scheme of `src` when an icon is registered and otherwise
+passes icons through.
+
 ## Decisions for the owner
 
 These are the choices where a different answer changes the design. My
