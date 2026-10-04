@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import secrets
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
 from typing import Any
@@ -38,7 +39,17 @@ class RapidMCP:
         tls: TLSConfig | None = None,
         mask_error_details: bool = False,
         host: str | None = None,
+        state_secret: str | bytes | None = None,
     ) -> None:
+        # Signs the request_state v2 tools hand to clients between input rounds.
+        # Replicas behind one load balancer must share it.
+        self._state_secret_configured = state_secret is not None
+        if state_secret is None:
+            self._state_secret = secrets.token_bytes(32)
+        elif isinstance(state_secret, str):
+            self._state_secret = state_secret.encode()
+        else:
+            self._state_secret = state_secret
         self._host = host
         self._bound_host = host or "[::]"
         self.name = name

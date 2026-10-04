@@ -16,8 +16,9 @@ from typing import TYPE_CHECKING
 from rapidmcp._generated import mcp_v2_pb2 as pb
 from rapidmcp._generated import mcp_v2_pb2_grpc
 from rapidmcp._utils import _invoke, _paginate, _parse_tool_arguments, _resource_content_fields
-from rapidmcp._v2_context import LOG_LEVELS, _V2Context
+from rapidmcp._v2_context import LOG_LEVELS, _NeedsInput, _V2Context
 from rapidmcp._v2_errors import abort
+from rapidmcp._v2_state import operation_digest, principal_digest, seal, unseal
 from rapidmcp.errors import (
     INTERNAL_ERROR,
     INVALID_PARAMS,
@@ -37,6 +38,7 @@ _HINTS = ("read_only_hint", "destructive_hint", "idempotent_hint", "open_world_h
 class _McpV2Servicer(mcp_v2_pb2_grpc.McpServicer):
     def __init__(self, server: RapidMCP) -> None:
         self._server = server
+        self._warned_about_secret = False
 
     # ── shared pieces ────────────────────────────────────────────────────
 
@@ -74,6 +76,21 @@ class _McpV2Servicer(mcp_v2_pb2_grpc.McpServicer):
             )
         if meta.HasField("log_level") and meta.log_level not in LOG_LEVELS:
             await abort(context, McpError(INVALID_PARAMS, f"Unknown log level '{meta.log_level}'"))
+
+    def _principal(self, context) -> str:
+        """Who a request_state belongs to: the caller's credentials, when the server checks them."""
+        if self._server._auth is None:
+            return ""
+        return principal_digest(dict(context.invocation_metadata()).get("authorization"))
+
+    def _seal(self, answers: dict, operation: str, principal: str) -> bytes:
+        if not self._server._state_secret_configured and not self._warned_about_secret:
+            self._warned_about_secret = True
+            logger.warning(
+                "Issuing request_state signed with a secret generated at start-up. "
+                "Set RapidMCP(state_secret=...) so every replica can verify it."
+            )
+        return seal(self._server._state_secret, answers, operation, principal)
 
     # ── RPCs ─────────────────────────────────────────────────────────────
 
@@ -220,8 +237,32 @@ class _McpV2Servicer(mcp_v2_pb2_grpc.McpServicer):
 
         async def work(emit):
             arguments = _parse_tool_arguments(name, request.arguments)
-            ctx = _V2Context(request.meta, emit)
-            result = await self._server._dispatch_tool(name, arguments, ctx)
+            operation = operation_digest("tools/call", name, request.arguments)
+            principal = self._principal(context)
+
+            # Earlier answers come back inside the state; the latest ones in the request.
+            answers: dict[str, dict[str, str]] = {}
+            if request.request_state:
+                answers = unseal(
+                    self._server._state_secret, request.request_state, operation, principal
+                )
+            for key, response in request.input_responses.items():
+                if response.HasField("elicit"):
+                    answers[key] = {
+                        "action": response.elicit.action,
+                        "content": response.elicit.content,
+                    }
+
+            ctx = _V2Context(request.meta, emit, answers)
+            try:
+                result = await self._server._dispatch_tool(name, arguments, ctx)
+            except _NeedsInput as need:
+                return pb.CallToolEvent(
+                    input_required=pb.InputRequired(
+                        input_requests=need.requests,
+                        request_state=self._seal(answers, operation, principal),
+                    )
+                )
             structured = ctx._structured_content
             return pb.CallToolEvent(
                 complete=pb.CallToolResult(

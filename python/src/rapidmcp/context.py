@@ -7,7 +7,7 @@ import json
 
 from rapidmcp._generated import mcp_pb2
 from rapidmcp.elicitation import ElicitationResult, build_elicitation_schema
-from rapidmcp.errors import MISSING_CLIENT_CAPABILITY, McpError
+from rapidmcp.errors import METHOD_NOT_FOUND, MISSING_CLIENT_CAPABILITY, McpError
 from rapidmcp.session import PendingRequests
 
 _DEFAULT_TIMEOUT: float = 30.0
@@ -165,6 +165,8 @@ class Context:
         schema: str | None = None,
         fields: dict | None = None,
         timeout: float | None = _DEFAULT_TIMEOUT,
+        key: str | None = None,
+        url: str | None = None,
     ) -> ElicitationResult:
         """Request user input from the client.
 
@@ -176,6 +178,9 @@ class Context:
                 (``StringField``, ``BoolField``, ``IntField``, ``FloatField``,
                 ``EnumField``).  Automatically serialised to a valid MCP
                 elicitation schema.
+            key:     Name for this question on the v2 protocol; ignored on v1.
+            url:     Ask the user to visit a URL instead of filling a form.
+                     Needs the v2 protocol.
             timeout: Seconds to wait for the user's answer; ``None`` waits
                 indefinitely. Raises ``asyncio.TimeoutError`` when exceeded.
 
@@ -184,6 +189,8 @@ class Context:
             ``"decline"``, or ``"cancel"``) and ``data`` (dict of filled values
             when accepted).
         """
+        if url is not None:
+            raise McpError(METHOD_NOT_FOUND, "URL elicitation needs the v2 protocol")
         if not self._capabilities.elicitation:
             raise McpError(MISSING_CLIENT_CAPABILITY, "Client does not support elicitation")
         if fields is not None and schema is not None:
