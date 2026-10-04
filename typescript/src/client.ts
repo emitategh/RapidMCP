@@ -21,7 +21,11 @@ import {
   type ListRootsResponse,
 } from "../generated/mcp.js";
 import { ErrorCode, McpError } from "./errors.js";
-import { V2Transport, isV2Missing } from "./v2/client-transport.js";
+import {
+  V2Transport,
+  isV2Missing,
+  type ElicitRequestInfo,
+} from "./v2/client-transport.js";
 import { AsyncQueue, PendingRequests, NotificationRegistry, withTimeout } from "./session.js";
 import { buildChannelCredentials, buildMetadata, type ClientOptions } from "./auth.js";
 import {
@@ -78,7 +82,10 @@ export class Client {
   private _generation = 0;
 
   private _samplingHandler: ((req: SamplingRequest) => Promise<SamplingResponse>) | null = null;
-  private _elicitationHandler: ((req: ElicitationRequest) => Promise<ElicitationResponse>) | null = null;
+  private _elicitationHandler:
+    | ((req: ElicitRequestInfo) => Promise<{ action: string; content?: string }>)
+    | null = null;
+  private _elicitationUrl = false;
   private _rootsHandler: (() => Promise<Root[]>) | null = null;
 
   constructor(target: string, opts: ClientOptions = {}) {
@@ -130,7 +137,7 @@ export class Client {
         this._channel,
         this._opts,
         this._requestTimeout,
-        () => this._elicitationHandler !== null,
+        () => ({ handler: this._elicitationHandler, url: this._elicitationUrl }),
         this._notifications,
       );
       try {
@@ -260,10 +267,18 @@ export class Client {
             const rid = envelope.requestId;
             if (this._elicitationHandler) {
               this._handleServerPush(rid, async () => {
-                const result = await this._elicitationHandler!(msg.elicitation);
+                const result = await this._elicitationHandler!({
+                  message: msg.elicitation.message,
+                  schema: msg.elicitation.schema,
+                  mode: "form",
+                  url: "",
+                });
                 this._sendQueue.enqueue({
                   requestId: rid,
-                  message: { $case: "elicitationReply", elicitationReply: result },
+                  message: {
+                    $case: "elicitationReply",
+                    elicitationReply: { action: result.action, content: result.content ?? "" },
+                  },
                 });
               });
             } else {
@@ -589,9 +604,17 @@ export class Client {
     this._samplingHandler = handler;
   }
 
-  /** Register a handler for server-initiated elicitation requests. */
-  setElicitationHandler(handler: (req: ElicitationRequest) => Promise<ElicitationResponse>): void {
+  /**
+   * Register a handler for the server's questions. It receives the message and,
+   * for a form, the JSON Schema text; on v2 also the mode and, for url mode, the
+   * url. Pass `{ url: true }` if it can also send the user to a URL.
+   */
+  setElicitationHandler(
+    handler: (req: ElicitRequestInfo) => Promise<{ action: string; content?: string }>,
+    opts: { url?: boolean } = {},
+  ): void {
     this._elicitationHandler = handler;
+    this._elicitationUrl = opts.url ?? false;
   }
 
   /** Register a handler for server-initiated roots requests. */

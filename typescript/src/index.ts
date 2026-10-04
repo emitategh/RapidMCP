@@ -1,4 +1,5 @@
 export { Client } from "./client.js";
+export { type ElicitRequestInfo } from "./v2/client-transport.js";
 export { ErrorCode, McpError, ToolError } from "./errors.js";
 export {
   type ContentItem,

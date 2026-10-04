@@ -13,6 +13,7 @@ export const ErrorCode = {
   RequestTimeout: 408,
   RequestCancelled: 499,
   NotConnected: 503,
+  InputLoop: 508,
 } as const;
 
 /** Structured detail some errors carry. */

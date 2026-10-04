@@ -5,6 +5,9 @@ import {
   McpDefinition,
   type CallToolResult as WireCallToolResult,
   type GetPromptResult as WireGetPromptResult,
+  type InputRequest,
+  type InputRequired,
+  type InputResponse,
   type McpClient,
   type ReadResourceResult as WireReadResourceResult,
   type RequestMeta,
@@ -35,6 +38,25 @@ import {
 import { errorFromRpc } from "./errors.js";
 
 export const PROTOCOL_VERSION = "2026-07-28";
+export const MAX_INPUT_ROUNDS = 10;
+
+/** What a v2 server asks the user; passed to the elicitation handler. */
+export interface ElicitRequestInfo {
+  message: string;
+  /** JSON Schema text, form mode only. */
+  schema: string;
+  mode: "form" | "url";
+  /** URL mode only. */
+  url: string;
+}
+
+export type ElicitationHandler = (
+  request: ElicitRequestInfo,
+) => Promise<{ action: string; content?: string }>;
+
+type Terminal<R> =
+  | { kind: "complete"; message: R }
+  | { kind: "inputRequired"; message: InputRequired };
 
 /** True when a failed discover means "this server does not serve v2". */
 export function isV2Missing(err: unknown): boolean {
@@ -49,17 +71,22 @@ export class V2Transport {
     channel: Channel,
     private readonly _opts: ClientOptions,
     private readonly _timeoutMs: number,
-    private readonly _supportsElicitation: () => boolean,
+    private readonly _elicitation: () => { handler: ElicitationHandler | null; url: boolean },
     private readonly _notifications: NotificationRegistry,
   ) {
     this._client = createClientFactory().create(McpDefinition, channel);
+  }
+
+  private _elicitationCapability() {
+    const { handler, url } = this._elicitation();
+    return handler ? { form: true, url } : undefined;
   }
 
   private _meta(events = false): RequestMeta {
     return {
       protocolVersion: PROTOCOL_VERSION,
       clientCapabilities: {
-        elicitation: this._supportsElicitation() ? { form: true, url: false } : undefined,
+        elicitation: this._elicitationCapability(),
         extensions: {},
       },
       clientInfo: { name: "rapidmcp-typescript", version: "0.3.0" },
@@ -169,7 +196,7 @@ export class V2Transport {
   private async _stream<R>(
     open: (options: CallOptions) => AsyncIterable<{ event?: { $case: string } | undefined }>,
     opts: { signal?: AbortSignal; timeout?: number } = {},
-  ): Promise<R> {
+  ): Promise<Terminal<R>> {
     if (opts.signal?.aborted) throw new McpError(-1, "Aborted");
     const controller = new AbortController();
     let timedOut = false;
@@ -210,12 +237,9 @@ export class V2Transport {
             extra: data.extra ?? null,
           });
         } else if (event.$case === "complete") {
-          return event.complete as R;
+          return { kind: "complete", message: event.complete as R };
         } else if (event.$case === "inputRequired") {
-          throw new McpError(
-            ErrorCode.MethodNotFound,
-            "The server asked for input, which this client cannot give yet",
-          );
+          return { kind: "inputRequired", message: event.inputRequired as InputRequired };
         }
       }
       throw new McpError(ErrorCode.InternalError, "The server ended the call without a result");
@@ -236,17 +260,65 @@ export class V2Transport {
     }
   }
 
+  private async _answer(request: InputRequest): Promise<InputResponse> {
+    const { handler } = this._elicitation();
+    if (request.request?.$case !== "elicit" || handler === null) {
+      throw new McpError(
+        ErrorCode.MissingClientCapability,
+        "The server asked for input this client cannot give",
+      );
+    }
+    const asked = request.request.elicit;
+    const mode = asked.mode?.$case === "url" ? "url" : "form";
+    const reply = await handler({
+      message: asked.message,
+      schema: asked.mode?.$case === "form" ? asked.mode.form.requestedSchema : "",
+      mode,
+      url: asked.mode?.$case === "url" ? asked.mode.url.url : "",
+    });
+    return {
+      response: { $case: "elicit", elicit: { action: reply.action, content: reply.content ?? "" } },
+    };
+  }
+
+  /** Call until the server has what it needs, answering its questions in between. */
+  private async _run<R>(
+    open: (
+      round: { inputResponses: Record<string, InputResponse>; requestState: Uint8Array },
+      options: CallOptions,
+    ) => AsyncIterable<{ event?: { $case: string } | undefined }>,
+    opts: { signal?: AbortSignal; timeout?: number } = {},
+  ): Promise<R> {
+    let round: { inputResponses: Record<string, InputResponse>; requestState: Uint8Array } = {
+      inputResponses: {},
+      requestState: new Uint8Array(),
+    };
+    for (let rounds = 0; rounds <= MAX_INPUT_ROUNDS; rounds++) {
+      const current = round;
+      const outcome = await this._stream<R>((o) => open(current, o), opts);
+      if (outcome.kind === "complete") return outcome.message;
+      if (rounds === MAX_INPUT_ROUNDS) break;
+      const inputResponses: Record<string, InputResponse> = {};
+      for (const [key, request] of Object.entries(outcome.message.inputRequests)) {
+        inputResponses[key] = await this._answer(request);
+      }
+      round = { inputResponses, requestState: outcome.message.requestState };
+    }
+    throw new McpError(
+      ErrorCode.InputLoop,
+      `The server asked for input more than ${MAX_INPUT_ROUNDS} times`,
+    );
+  }
+
   async callTool(
     name: string,
     args: Record<string, unknown>,
     opts: { signal?: AbortSignal; timeout?: number } = {},
   ): Promise<CallToolResult> {
-    const wire = await this._stream<WireCallToolResult>(
-      (o) =>
-        this._client.callTool(
-          { meta: this._meta(true), name, arguments: JSON.stringify(args), inputResponses: {} },
-          o,
-        ),
+    const text = JSON.stringify(args); // the same text every round: the state is bound to it
+    const wire = await this._run<WireCallToolResult>(
+      (round, o) =>
+        this._client.callTool({ meta: this._meta(true), name, arguments: text, ...round }, o),
       opts,
     );
     return {
@@ -256,15 +328,15 @@ export class V2Transport {
   }
 
   async readResource(uri: string): Promise<ReadResourceResult> {
-    const wire = await this._stream<WireReadResourceResult>((o) =>
-      this._client.readResource({ meta: this._meta(), uri, inputResponses: {} }, o),
+    const wire = await this._run<WireReadResourceResult>((round, o) =>
+      this._client.readResource({ meta: this._meta(), uri, ...round }, o),
     );
     return convertReadResourceResult(wire);
   }
 
   async getPrompt(name: string, args: Record<string, string>): Promise<GetPromptResult> {
-    const wire = await this._stream<WireGetPromptResult>((o) =>
-      this._client.getPrompt({ meta: this._meta(), name, arguments: args, inputResponses: {} }, o),
+    const wire = await this._run<WireGetPromptResult>((round, o) =>
+      this._client.getPrompt({ meta: this._meta(), name, arguments: args, ...round }, o),
     );
     return convertGetPromptResult(
       wire as unknown as Parameters<typeof convertGetPromptResult>[0],
