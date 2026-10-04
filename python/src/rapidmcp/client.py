@@ -133,6 +133,7 @@ class Client:
             self._metadata,
             self._request_timeout,
             supports_elicitation=lambda: self._elicitation_handler is not None,
+            notifications=self._notifications,
         )
         try:
             self.server_info = await transport.discover()
@@ -345,7 +346,8 @@ class Client:
         self, name: str, arguments: dict | None = None, *, timeout: float | None = None
     ) -> CallToolResult:
         """Call a tool. *timeout* (seconds) overrides the client's ``request_timeout``."""
-        self._v1_only("call_tool")
+        if self._v2 is not None:
+            return await self._v2.call_tool(name, arguments, timeout)
         env = mcp_pb2.ClientEnvelope(
             call_tool=mcp_pb2.CallToolRequest(
                 name=name,
@@ -368,7 +370,8 @@ class Client:
         )
 
     async def read_resource(self, uri: str) -> ReadResourceResult:
-        self._v1_only("read_resource")
+        if self._v2 is not None:
+            return await self._v2.read_resource(uri)
         env = mcp_pb2.ClientEnvelope(
             read_resource=mcp_pb2.ReadResourceRequest(uri=uri),
         )
@@ -398,7 +401,8 @@ class Client:
     async def get_prompt(
         self, name: str, arguments: dict[str, str] | None = None
     ) -> GetPromptResult:
-        self._v1_only("get_prompt")
+        if self._v2 is not None:
+            return await self._v2.get_prompt(name, arguments)
         env = mcp_pb2.ClientEnvelope(
             get_prompt=mcp_pb2.GetPromptRequest(name=name, arguments=arguments or {}),
         )

@@ -61,6 +61,10 @@ class NotificationRegistry:
     def register(self, notification_type: str, handler: Callable) -> None:
         self._handlers.setdefault(notification_type, []).append(handler)
 
+    def has(self, notification_type: str) -> bool:
+        """True when at least one handler is registered for *notification_type*."""
+        return bool(self._handlers.get(notification_type))
+
     async def dispatch(self, notification_type: str, payload: str) -> None:
         for handler in self._handlers.get(notification_type, []):
             result = handler(payload)

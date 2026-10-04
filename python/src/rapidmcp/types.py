@@ -44,6 +44,8 @@ class CallToolResult:
 
     content: list[ContentItem]
     is_error: bool = False
+    # The tool's result as a JSON value, when the server sent one (v2 only).
+    structured_content: Any | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -294,4 +296,12 @@ def _convert_tool_v2(p) -> Tool:
             idempotent_hint=hint("idempotent_hint", False),
             open_world_hint=hint("open_world_hint", True),
         ),
+    )
+
+
+def _convert_call_tool_result_v2(p) -> CallToolResult:
+    return CallToolResult(
+        content=[_convert_content_item(c) for c in p.content],
+        is_error=p.is_error,
+        structured_content=json.loads(p.structured_content) if p.structured_content else None,
     )

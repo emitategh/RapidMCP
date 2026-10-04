@@ -94,7 +94,7 @@ async def test_modern_client_says_which_operations_v2_lacks():
     srv = _server()
     async with srv, Client(f"localhost:{srv.port}", mode="modern") as client:
         with pytest.raises(McpError) as exc:
-            await client.call_tool("echo", {"text": "x"})
+            await client.subscribe_resource("res://a")
 
     assert exc.value.code == -32601
     assert "legacy" in exc.value.message
