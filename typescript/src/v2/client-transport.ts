@@ -386,16 +386,24 @@ export class V2Transport {
 
   /**
    * Hold a Listen stream open, handing its notifications to the registered
-   * handlers. Resolves once the server acknowledges the subscription; delivery
+   * handlers. Resolves once the server acknowledges the subscription and
+   * rejects if it is refused or not acknowledged in time; delivery then
    * continues until *signal* aborts.
    */
   listen(filter: NotificationFilter, signal: AbortSignal): Promise<void> {
     return new Promise<void>((resolve, reject) => {
+      let acknowledged = false;
       const timer = setTimeout(
         () => reject(new McpError(ErrorCode.RequestTimeout, "Subscription was not acknowledged")),
         this._timeoutMs,
       );
-      const options: CallOptions = { signal };
+      let trailer: Metadata | null = null;
+      const options: CallOptions = {
+        signal,
+        onTrailer: (t) => {
+          trailer = t;
+        },
+      };
       const metadata = this._callMetadata(false);
       if (metadata) options.metadata = metadata;
 
@@ -406,6 +414,7 @@ export class V2Transport {
             if (!event) continue;
             switch (event.$case) {
               case "acknowledged":
+                acknowledged = true;
                 clearTimeout(timer);
                 resolve();
                 break;
@@ -423,14 +432,21 @@ export class V2Transport {
                 break;
             }
           }
-          resolve(); // ended without an acknowledgement: nothing more will come
+          if (!acknowledged) {
+            reject(new McpError(ErrorCode.InternalError, "The server closed the subscription without accepting it"));
+          }
         } catch (err) {
-          if (!signal.aborted) console.warn("[rapidmcp] subscription stream ended:", err);
-          resolve();
+          if (acknowledged) {
+            if (!signal.aborted) console.warn("[rapidmcp] subscription stream ended:", err);
+          } else {
+            const mapped = err instanceof ClientError ? errorFromRpc(err.code, err.details, trailer) : null;
+            reject(mapped ?? err);
+          }
         } finally {
           clearTimeout(timer);
         }
       })();
     });
   }
+
 }

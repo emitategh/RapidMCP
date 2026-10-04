@@ -86,6 +86,9 @@ export class RapidMCP {
     this._pageSize = opts.pageSize;
     this._auth = opts.auth;
     this._tls = opts.tls;
+    if (opts.stateSecret !== undefined && opts.stateSecret.length === 0) {
+      throw new Error("stateSecret must not be empty");
+    }
     this._stateSecretConfigured = opts.stateSecret !== undefined;
     this._stateSecret =
       opts.stateSecret === undefined

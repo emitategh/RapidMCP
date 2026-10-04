@@ -41,7 +41,7 @@ import { AsyncQueue } from "../session.js";
 import { LOG_LEVELS, NeedsInput, V2Context } from "./context.js";
 import type { Listeners } from "./listeners.js";
 import { wireIcons, type Icon } from "../icons.js";
-import { operationDigest, principalDigest, seal, unseal, type Answers } from "./state.js";
+import { operationDigest, principalDigest, seal, unsealState, type Answers } from "./state.js";
 import { ErrorCode, McpError } from "../errors.js";
 import type { PromptManager } from "../prompts/prompt-manager.js";
 import type { ResourceManager } from "../resources/resource-manager.js";
@@ -84,7 +84,7 @@ export class McpV2Servicer implements McpServiceImplementation {
     return principalDigest(context.metadata.get("authorization"));
   }
 
-  private _seal(answers: Answers, operation: string, principal: string): Uint8Array {
+  private _seal(answers: Answers, operation: string, principal: string, asked: string[]): Uint8Array {
     if (!this._opts.stateSecretConfigured && !this._warnedAboutSecret) {
       this._warnedAboutSecret = true;
       console.warn(
@@ -92,7 +92,7 @@ export class McpV2Servicer implements McpServiceImplementation {
           "Set stateSecret so every replica can verify it.",
       );
     }
-    return seal(this._opts.stateSecret, answers, operation, principal);
+    return seal(this._opts.stateSecret, answers, operation, principal, { asked });
   }
 
   private _resultMeta(): ResultMeta {
@@ -246,11 +246,7 @@ export class McpV2Servicer implements McpServiceImplementation {
         total: result.total ?? result.values.length,
       };
     } catch (err) {
-      console.error("[rapidmcp] completion handler failed:", err);
-      throw toServerError(
-        new McpError(ErrorCode.InternalError, "Completion handler failed"),
-        context.trailer,
-      );
+      throw this._failure(err, `Completion handler for '${request.ref?.name ?? ""}' failed`, context);
     }
   }
 
@@ -290,16 +286,18 @@ export class McpV2Servicer implements McpServiceImplementation {
     const principal = this._principal(context);
 
     // Earlier answers come back inside the state; the latest ones in the request.
+    // An answer counts only if a state this server signed says it was asked for.
     let answers: Answers = {};
+    let asked: string[] = [];
     if (request.requestState.length > 0) {
       try {
-        answers = unseal(this._opts.stateSecret, request.requestState, operation, principal);
+        ({ answers, asked } = unsealState(this._opts.stateSecret, request.requestState, operation, principal));
       } catch (err) {
         throw this._failure(err, `Tool call '${name}' failed`, context);
       }
     }
     for (const [key, response] of Object.entries(request.inputResponses)) {
-      if (response.response?.$case === "elicit") {
+      if (asked.includes(key) && response.response?.$case === "elicit") {
         const { action, content } = response.response.elicit;
         answers[key] = { action, content };
       }
@@ -350,7 +348,7 @@ export class McpV2Servicer implements McpServiceImplementation {
             $case: "inputRequired",
             inputRequired: {
               inputRequests: settled.error.requests as Record<string, DeepPartial<InputRequest>>,
-              requestState: this._seal(answers, operation, principal),
+              requestState: this._seal(answers, operation, principal, Object.keys(settled.error.requests)),
             },
           },
         };
@@ -402,6 +400,17 @@ export class McpV2Servicer implements McpServiceImplementation {
           new McpError(
             ErrorCode.InvalidParams,
             `Missing required argument(s) for prompt '${name}': ${missing.join(", ")}`,
+          ),
+          context.trailer,
+        );
+      }
+      const declared = new Set(prompt.arguments.map((a) => a.name));
+      const unknown = Object.keys(request.arguments).filter((key) => !declared.has(key));
+      if (unknown.length > 0) {
+        throw toServerError(
+          new McpError(
+            ErrorCode.InvalidParams,
+            `Unknown argument(s) for prompt '${name}': ${unknown.join(", ")}`,
           ),
           context.trailer,
         );

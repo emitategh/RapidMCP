@@ -76,6 +76,10 @@ export class Client {
   private _v2: V2Transport | null = null;
   private _subscribedUris: string[] = [];
   private _listenAbort: AbortController | null = null;
+  /** What the open stream subscribed to. */
+  private _listenFilter: string | null = null;
+  /** Refreshes run one at a time. */
+  private _listenQueue: Promise<void> = Promise.resolve();
   /** True while a reader loop is consuming the current stream. */
   private _streamOpen = false;
   /** In-flight connect(), shared by concurrent callers. */
@@ -145,10 +149,12 @@ export class Client {
       try {
         this._serverInfo = await transport.discover();
         this._v2 = transport;
-        this._connected = true;
         await this._refreshListen();
+        this._connected = true;
         return;
       } catch (err) {
+        this._v2 = null;
+        this._stopListening();
         if (!(this._mode === "auto" && isV2Missing(err))) {
           this._channel.close();
           this._channel = null;
@@ -357,11 +363,26 @@ export class Client {
     }
   }
 
-  /** (Re)open the v2 subscription so it matches the handlers and uris registered now. */
-  private async _refreshListen(): Promise<void> {
-    if (!this._v2) return;
+  private _stopListening(): void {
     this._listenAbort?.abort();
     this._listenAbort = null;
+    this._listenFilter = null;
+  }
+
+  /**
+   * (Re)open the v2 subscription so it matches the handlers and uris registered
+   * now. The replacement stream is acknowledged before the old one is closed,
+   * so nothing is missed in between (a notification may arrive on both).
+   */
+  private _refreshListen(): Promise<void> {
+    const run = this._listenQueue.then(() => this._doRefreshListen());
+    this._listenQueue = run.catch(() => {});
+    return run;
+  }
+
+  private async _doRefreshListen(): Promise<void> {
+    const transport = this._v2;
+    if (!transport) return;
     const filter = {
       toolsListChanged: this._notifications.has("tools_list_changed"),
       promptsListChanged: this._notifications.has("prompts_list_changed"),
@@ -373,10 +394,28 @@ export class Client {
       filter.promptsListChanged ||
       filter.resourcesListChanged ||
       filter.resourceSubscriptions.length > 0;
-    if (!wantsAnything) return;
+    if (!wantsAnything) {
+      this._stopListening();
+      return;
+    }
+    const wanted = JSON.stringify(filter);
+    if (this._listenAbort && wanted === this._listenFilter) return;
+
     const controller = new AbortController();
+    try {
+      await transport.listen(filter, controller.signal);
+    } catch (err) {
+      controller.abort();
+      throw err;
+    }
+    if (this._v2 !== transport) {
+      controller.abort(); // closed while the subscription was being opened
+      return;
+    }
+    const previous = this._listenAbort;
     this._listenAbort = controller;
-    await this._v2.listen(filter, controller.signal);
+    this._listenFilter = wanted;
+    previous?.abort();
   }
 
   /** Fail now rather than at the request timeout when nothing is reading replies. */
@@ -683,9 +722,8 @@ export class Client {
   /** Close the connection: close send stream, await reader, cancel pending, close channel. */
   async close(): Promise<void> {
     if (this._v2) {
-      this._listenAbort?.abort();
-      this._listenAbort = null;
       this._v2 = null;
+      this._stopListening();
       this._channel?.close();
       this._channel = null;
       this._connected = false;

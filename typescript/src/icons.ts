@@ -9,16 +9,22 @@ export interface Icon {
   theme?: string;
 }
 
-/** *icons* as a full list, refusing sources a client must not be asked to load. */
+/**
+ * A private, frozen copy of *icons*, refusing sources a client must not be asked
+ * to load. Copied so that changing the caller's objects later cannot get past
+ * this check.
+ */
 export function checkedIcons(icons: Icon[] | undefined): Icon[] {
-  const result = icons ?? [];
+  const result = (icons ?? []).map((icon) =>
+    Object.freeze({ ...icon, sizes: icon.sizes ? [...icon.sizes] : undefined }),
+  );
   for (const icon of result) {
     const src = icon.src.toLowerCase();
     if (!src.startsWith("https://") && !src.startsWith("data:")) {
       throw new Error(`Icon src must be an https: or data: URI, got ${JSON.stringify(icon.src)}`);
     }
   }
-  return result;
+  return Object.freeze(result) as Icon[];
 }
 
 /** The wire form of an icon list. */

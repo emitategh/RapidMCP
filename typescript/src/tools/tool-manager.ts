@@ -77,7 +77,9 @@ export class ToolManager {
 
     try {
       const result = await tool.handler(validatedArgs, ctx);
-      const isObject = typeof result === "object" && result !== null && !Array.isArray(result);
+      // A plain object only: a Date, Map or class instance is not a JSON object.
+      const proto = typeof result === "object" && result !== null ? Object.getPrototypeOf(result) : undefined;
+      const isObject = proto === Object.prototype || proto === null;
       return {
         content: toContentItems(result),
         isError: false,

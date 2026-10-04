@@ -34,7 +34,7 @@ export function seal(
   answers: Answers,
   operation: string,
   principal: string,
-  opts: { now?: number; ttl?: number } = {},
+  opts: { now?: number; ttl?: number; asked?: string[] } = {},
 ): Uint8Array {
   const issued = opts.now ?? nowSeconds();
   const payload = Buffer.from(
@@ -44,6 +44,8 @@ export function seal(
       op: operation,
       sub: principal,
       answers,
+      // The questions this state is waiting on; only their answers are accepted.
+      ...(opts.asked && opts.asked.length > 0 ? { asked: [...opts.asked].sort() } : {}),
     }),
   );
   const mac = createHmac("sha256", secret).update(payload).digest();
@@ -54,14 +56,14 @@ function rejected(reason: string): McpError {
   return new McpError(ErrorCode.InvalidParams, `Invalid request_state: ${reason}`);
 }
 
-/** The answers inside *state*, or McpError(-32602) if it cannot be trusted. */
-export function unseal(
+/** The answers inside *state* and the questions it is waiting on; McpError(-32602) if it cannot be trusted. */
+export function unsealState(
   secret: Uint8Array,
   state: Uint8Array,
   operation: string,
   principal: string,
   opts: { now?: number } = {},
-): Answers {
+): { answers: Answers; asked: string[] } {
   const bytes = Buffer.from(state);
   const mac = bytes.subarray(0, MAC_BYTES);
   const payload = bytes.subarray(MAC_BYTES);
@@ -69,7 +71,7 @@ export function unseal(
   if (mac.length !== MAC_BYTES || !timingSafeEqual(mac, expected)) {
     throw rejected("it was not issued by this server, or has been altered");
   }
-  let data: { exp?: unknown; op?: unknown; sub?: unknown; answers?: unknown };
+  let data: { exp?: unknown; op?: unknown; sub?: unknown; answers?: unknown; asked?: unknown };
   try {
     data = JSON.parse(payload.toString("utf8"));
   } catch {
@@ -81,5 +83,18 @@ export function unseal(
   if (data.exp < (opts.now ?? nowSeconds())) throw rejected("it has expired");
   if (data.op !== operation) throw rejected("it belongs to a different request");
   if (data.sub !== principal) throw rejected("it belongs to a different caller");
-  return data.answers as Answers;
+  const asked = data.asked ?? [];
+  if (!Array.isArray(asked)) throw rejected("it is malformed");
+  return { answers: data.answers as Answers, asked: asked as string[] };
+}
+
+/** The answers inside *state*, or McpError(-32602) if it cannot be trusted. */
+export function unseal(
+  secret: Uint8Array,
+  state: Uint8Array,
+  operation: string,
+  principal: string,
+  opts: { now?: number } = {},
+): Answers {
+  return unsealState(secret, state, operation, principal, opts).answers;
 }
