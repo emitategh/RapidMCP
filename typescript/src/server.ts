@@ -4,6 +4,7 @@
  * High-level API for registering tools, resources, prompts,
  * and middleware, then serving them over a gRPC bidirectional stream.
  */
+import { randomBytes } from "node:crypto";
 import { createServer, type Server } from "nice-grpc";
 import {
   McpDefinition,
@@ -38,6 +39,8 @@ export interface RapidMCPOptions {
   auth?: TokenVerifier;
   /** Serve over TLS (and mTLS when `ca` is set). */
   tls?: ServerTlsConfig;
+  /** Signs the request_state v2 tools hand to clients between input rounds. Replicas must share it. */
+  stateSecret?: string | Uint8Array;
   /** Report "Error calling tool 'x'" without the exception text (ToolError messages still pass). */
   maskErrorDetails?: boolean;
 }
@@ -53,6 +56,8 @@ export class RapidMCP {
   private _pageSize: number | undefined;
   private _auth: TokenVerifier | undefined;
   private _tls: ServerTlsConfig | undefined;
+  private _stateSecret: Uint8Array;
+  private _stateSecretConfigured: boolean;
 
   private _toolManager: ToolManager;
   private _resourceManager = new ResourceManager();
@@ -70,6 +75,13 @@ export class RapidMCP {
     this._pageSize = opts.pageSize;
     this._auth = opts.auth;
     this._tls = opts.tls;
+    this._stateSecretConfigured = opts.stateSecret !== undefined;
+    this._stateSecret =
+      opts.stateSecret === undefined
+        ? randomBytes(32)
+        : typeof opts.stateSecret === "string"
+          ? new TextEncoder().encode(opts.stateSecret)
+          : opts.stateSecret;
     this._toolManager = new ToolManager({ maskErrorDetails: opts.maskErrorDetails });
   }
 
@@ -186,6 +198,9 @@ export class RapidMCP {
       promptManager: this._promptManager,
       middlewares: this._middlewares,
       pageSize: this._pageSize,
+      stateSecret: this._stateSecret,
+      stateSecretConfigured: this._stateSecretConfigured,
+      authEnabled: this._auth !== undefined,
     });
 
     this._server = createServer();

@@ -45,6 +45,10 @@ const REQUEST_TIMEOUT = 30_000;
 export interface ReplyOptions {
   /** Milliseconds to wait for the client's reply (default 30 000). */
   timeout?: number;
+  /** Name for this question on the v2 protocol; ignored on v1. */
+  key?: string;
+  /** Ask the user to visit a URL instead of filling a form. Needs the v2 protocol. */
+  url?: string;
 }
 
 export class Context {
@@ -203,6 +207,9 @@ export class Context {
     schema: Record<string, unknown>,
     opts: ReplyOptions = {},
   ): Promise<{ action: string; content: string }> {
+    if (opts.url !== undefined) {
+      throw new McpError(ErrorCode.MethodNotFound, "URL elicitation needs the v2 protocol");
+    }
     if (!this._capabilities.elicitation) {
       throw new McpError(ErrorCode.MissingClientCapability, "Client does not support elicitation");
     }

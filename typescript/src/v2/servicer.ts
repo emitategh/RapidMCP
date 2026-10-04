@@ -13,6 +13,7 @@ import {
   type CallToolRequest,
   type GetPromptEvent,
   type GetPromptRequest,
+  type InputRequest,
   type ReadResourceEvent,
   type ReadResourceRequest,
   type CompleteRequest,
@@ -35,7 +36,8 @@ import {
 import { paginate, parseToolArguments } from "../_utils.js";
 import { Middleware, type CallToolResult, type ToolCallContext } from "../middleware.js";
 import { AsyncQueue } from "../session.js";
-import { LOG_LEVELS, V2Context } from "./context.js";
+import { LOG_LEVELS, NeedsInput, V2Context } from "./context.js";
+import { operationDigest, principalDigest, seal, unseal, type Answers } from "./state.js";
 import { ErrorCode, McpError } from "../errors.js";
 import type { PromptManager } from "../prompts/prompt-manager.js";
 import type { ResourceManager } from "../resources/resource-manager.js";
@@ -52,12 +54,36 @@ export interface McpV2ServicerOptions {
   promptManager: PromptManager;
   middlewares: Middleware[];
   pageSize?: number;
+  /** Signs request_state; replicas behind one load balancer must share it. */
+  stateSecret: Uint8Array;
+  /** False when the secret was generated at start-up rather than configured. */
+  stateSecretConfigured: boolean;
+  /** Whether the server checks credentials; if so, request_state is bound to them. */
+  authEnabled: boolean;
 }
 
 const NO_CACHE: CacheHint = { ttlMs: 0n, scope: CacheScope.CACHE_SCOPE_PRIVATE };
 
 export class McpV2Servicer implements McpServiceImplementation {
   constructor(private readonly _opts: McpV2ServicerOptions) {}
+
+  private _warnedAboutSecret = false;
+
+  private _principal(context: CallContext): string {
+    if (!this._opts.authEnabled) return "";
+    return principalDigest(context.metadata.get("authorization"));
+  }
+
+  private _seal(answers: Answers, operation: string, principal: string): Uint8Array {
+    if (!this._opts.stateSecretConfigured && !this._warnedAboutSecret) {
+      this._warnedAboutSecret = true;
+      console.warn(
+        "[rapidmcp] Issuing request_state signed with a secret generated at start-up. " +
+          "Set stateSecret so every replica can verify it.",
+      );
+    }
+    return seal(this._opts.stateSecret, answers, operation, principal);
+  }
 
   private _resultMeta(): ResultMeta {
     return { serverInfo: { name: this._opts.name, version: this._opts.version } };
@@ -244,12 +270,30 @@ export class McpV2Servicer implements McpServiceImplementation {
   ): AsyncGenerator<DeepPartial<CallToolEvent>> {
     this._checkMeta(request.meta, context);
     const name = request.name;
+    const operation = operationDigest("tools/call", name, request.arguments);
+    const principal = this._principal(context);
+
+    // Earlier answers come back inside the state; the latest ones in the request.
+    let answers: Answers = {};
+    if (request.requestState.length > 0) {
+      try {
+        answers = unseal(this._opts.stateSecret, request.requestState, operation, principal);
+      } catch (err) {
+        throw this._failure(err, `Tool call '${name}' failed`, context);
+      }
+    }
+    for (const [key, response] of Object.entries(request.inputResponses)) {
+      if (response.response?.$case === "elicit") {
+        const { action, content } = response.response.elicit;
+        answers[key] = { action, content };
+      }
+    }
 
     // Events the tool emits and the "stop reading" marker share one queue, so
     // everything emitted before the tool settles is delivered before its result.
     const DONE = Symbol("done");
     const queue = new AsyncQueue<DeepPartial<CallToolEvent> | typeof DONE>();
-    const ctx = new V2Context(request.meta!, (event) => queue.enqueue(event), context.signal);
+    const ctx = new V2Context(request.meta!, (event) => queue.enqueue(event), context.signal, answers);
     const stop = () => queue.enqueue(DONE);
     context.signal.addEventListener("abort", stop, { once: true });
 
@@ -272,7 +316,21 @@ export class McpV2Servicer implements McpServiceImplementation {
     if (context.signal.aborted) return;
 
     const settled = await outcome;
-    if ("error" in settled) throw this._failure(settled.error, `Tool call '${name}' failed`, context);
+    if ("error" in settled) {
+      if (settled.error instanceof NeedsInput) {
+        yield {
+          event: {
+            $case: "inputRequired",
+            inputRequired: {
+              inputRequests: settled.error.requests as Record<string, DeepPartial<InputRequest>>,
+              requestState: this._seal(answers, operation, principal),
+            },
+          },
+        };
+        return;
+      }
+      throw this._failure(settled.error, `Tool call '${name}' failed`, context);
+    }
     const { content, isError, structuredContent } = settled.result;
     yield {
       event: {
