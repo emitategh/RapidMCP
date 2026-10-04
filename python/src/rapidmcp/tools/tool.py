@@ -9,7 +9,7 @@ import json
 import types
 import typing
 from collections.abc import Awaitable, Callable, Mapping, Sequence, Set
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 
@@ -38,6 +38,7 @@ class RegisteredTool:
     needs_context: bool = False
     output_schema: str = ""  # JSON schema string; empty = no structured output
     annotations: ToolAnnotations | None = None
+    icons: list = field(default_factory=list)
 
 
 def _resolve_hints(fn: Callable) -> dict[str, Any]:

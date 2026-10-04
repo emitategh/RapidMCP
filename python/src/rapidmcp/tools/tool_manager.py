@@ -5,13 +5,14 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from functools import partial
 from typing import Any
 
 from rapidmcp._generated import mcp_pb2
 from rapidmcp._utils import _invoke, _to_content_items
 from rapidmcp.errors import INVALID_PARAMS, McpError, ToolError
+from rapidmcp.icons import Icon, _checked_icons
 from rapidmcp.middleware import Middleware, ToolCallContext
 from rapidmcp.tools.tool import (
     RegisteredTool,
@@ -46,6 +47,7 @@ class ToolManager:
         idempotent: bool | None = None,
         open_world: bool | None = None,
         title: str = "",
+        icons: Iterable[Icon] | None = None,
     ) -> Callable[[Callable], Callable]:
         """Register a tool.
 
@@ -59,7 +61,9 @@ class ToolManager:
             idempotent: Hint that repeated calls produce the same result.
             open_world: Hint that this tool interacts with the external world.
             title: Short human-readable title for the tool.
+            icons: Icons a client may show for the tool (https: or data: sources).
         """
+        checked_icons = _checked_icons(icons)
 
         def decorator(fn: Callable) -> Callable:
             desc = description or (fn.__doc__ or "").strip()
@@ -84,6 +88,7 @@ class ToolManager:
                 needs_context=needs_ctx,
                 output_schema=json.dumps(output_schema) if output_schema else "",
                 annotations=ann,
+                icons=checked_icons,
             )
             return fn
 

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 
+from rapidmcp.icons import Icon, _checked_icons
 from rapidmcp.prompts.prompt import RegisteredCompletion, RegisteredPrompt
 
 
@@ -15,7 +16,11 @@ class PromptManager:
         self._prompts: dict[str, RegisteredPrompt] = {}
         self._completions: dict[str, RegisteredCompletion] = {}
 
-    def prompt(self, *, description: str | None = None) -> Callable[[Callable], Callable]:
+    def prompt(
+        self, *, description: str | None = None, icons: Iterable[Icon] | None = None
+    ) -> Callable[[Callable], Callable]:
+        checked_icons = _checked_icons(icons)
+
         def decorator(fn: Callable) -> Callable:
             desc = description or (fn.__doc__ or "").strip()
             sig = inspect.signature(fn)
@@ -32,6 +37,7 @@ class PromptManager:
                 description=desc,
                 arguments=arguments,
                 handler=fn,
+                icons=checked_icons,
             )
             return fn
 

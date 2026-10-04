@@ -50,11 +50,13 @@ class _V2Context(Context):
         meta: pb.RequestMeta,
         emit: Callable[[pb.CallToolEvent], Awaitable[None]],
         answers: dict[str, dict[str, str]] | None = None,
+        trace_context: dict[str, str] | None = None,
     ) -> None:
         self._meta = meta
         self._emit = emit
         self._answers = answers or {}
         self._elicit_calls = 0
+        self.trace_context = dict(trace_context or {})
 
     async def report_progress(
         self, progress: float, total: float | None = None, message: str = ""

@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 import secrets
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import replace
 from typing import Any
 
@@ -19,6 +19,7 @@ from rapidmcp._v2_listen import _Listeners
 from rapidmcp._v2_servicer import _McpV2Servicer
 from rapidmcp.auth import TLSConfig, _AuthInterceptor, _build_server_credentials
 from rapidmcp.context import Context
+from rapidmcp.icons import Icon, _checked_icons
 from rapidmcp.middleware import Middleware
 from rapidmcp.prompts import PromptManager, RegisteredCompletion, RegisteredPrompt
 from rapidmcp.resources import RegisteredResource, RegisteredResourceTemplate, ResourceManager
@@ -41,7 +42,19 @@ class RapidMCP:
         mask_error_details: bool = False,
         host: str | None = None,
         state_secret: str | bytes | None = None,
+        cache_ttl: float = 0.0,
+        cache_scope: str = "private",
+        icons: Iterable[Icon] | None = None,
     ) -> None:
+        if cache_ttl < 0:
+            raise ValueError(f"cache_ttl must be 0 or more seconds, got {cache_ttl!r}")
+        if cache_scope not in ("private", "public"):
+            raise ValueError(f"cache_scope must be 'private' or 'public', got {cache_scope!r}")
+        # How long clients may treat lists and resource reads as fresh, and whether
+        # shared intermediaries may cache them. 0 / private = always refetch.
+        self._cache_ttl = cache_ttl
+        self._cache_scope = cache_scope
+        self.icons = _checked_icons(icons)
         # Signs the request_state v2 tools hand to clients between input rounds.
         # Replicas behind one load balancer must share it.
         self._state_secret_configured = state_secret is not None
@@ -98,6 +111,7 @@ class RapidMCP:
         idempotent: bool | None = None,
         open_world: bool | None = None,
         title: str = "",
+        icons: Iterable[Icon] | None = None,
     ) -> Callable[[Callable], Callable]:
         return self._tool_manager.tool(
             description=description,
@@ -107,6 +121,7 @@ class RapidMCP:
             idempotent=idempotent,
             open_world=open_world,
             title=title,
+            icons=icons,
         )
 
     def resource(
@@ -115,11 +130,16 @@ class RapidMCP:
         *,
         description: str | None = None,
         mime_type: str = "text/plain",
+        icons: Iterable[Icon] | None = None,
     ) -> Callable:
-        return self._resource_manager.resource(uri, description=description, mime_type=mime_type)
+        return self._resource_manager.resource(
+            uri, description=description, mime_type=mime_type, icons=icons
+        )
 
-    def prompt(self, *, description: str | None = None) -> Callable[[Callable], Callable]:
-        return self._prompt_manager.prompt(description=description)
+    def prompt(
+        self, *, description: str | None = None, icons: Iterable[Icon] | None = None
+    ) -> Callable[[Callable], Callable]:
+        return self._prompt_manager.prompt(description=description, icons=icons)
 
     def completion(self, ref_name: str) -> Callable:
         return self._prompt_manager.completion(ref_name)
@@ -130,9 +150,10 @@ class RapidMCP:
         *,
         description: str | None = None,
         mime_type: str = "text/plain",
+        icons: Iterable[Icon] | None = None,
     ) -> Callable:
         return self._resource_manager.resource_template(
-            uri_template, description=description, mime_type=mime_type
+            uri_template, description=description, mime_type=mime_type, icons=icons
         )
 
     def list_registered_tools(self) -> list[RegisteredTool]:

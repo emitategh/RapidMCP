@@ -33,6 +33,17 @@ logger = logging.getLogger("rapidmcp.server")
 
 SUPPORTED_VERSIONS: tuple[str, ...] = ("2026-07-28",)
 _HINTS = ("read_only_hint", "destructive_hint", "idempotent_hint", "open_world_hint")
+_TRACE_KEYS = ("traceparent", "tracestate", "baggage")
+
+
+def _icons(icons) -> list[pb.Icon]:
+    return [
+        pb.Icon(src=i.src, mime_type=i.mime_type, sizes=list(i.sizes), theme=i.theme) for i in icons
+    ]
+
+
+async def _discard(event) -> None:
+    """The emit of a call that asked for no progress and no logs."""
 
 
 class _McpV2Servicer(mcp_v2_pb2_grpc.McpServicer):
@@ -47,9 +58,12 @@ class _McpV2Servicer(mcp_v2_pb2_grpc.McpServicer):
             server_info=pb.Implementation(name=self._server.name, version=self._server.version)
         )
 
-    @staticmethod
-    def _no_cache() -> pb.CacheHint:
-        return pb.CacheHint(ttl_ms=0, scope=pb.CACHE_SCOPE_PRIVATE)
+    def _cache_hint(self) -> pb.CacheHint:
+        public = self._server._cache_scope == "public"
+        return pb.CacheHint(
+            ttl_ms=int(self._server._cache_ttl * 1000),
+            scope=pb.CACHE_SCOPE_PUBLIC if public else pb.CACHE_SCOPE_PRIVATE,
+        )
 
     async def _check_meta(self, request, context) -> None:
         """Reject a request whose metadata is missing or names a version we do not serve."""
@@ -107,10 +121,14 @@ class _McpV2Servicer(mcp_v2_pb2_grpc.McpServicer):
         if server._prompts:
             capabilities.prompts.CopyFrom(pb.PromptsCapability(list_changed=True))
         return pb.DiscoverResult(
-            meta=self._result_meta(),
+            meta=pb.ResultMeta(
+                server_info=pb.Implementation(
+                    name=server.name, version=server.version, icons=_icons(server.icons)
+                )
+            ),
             supported_versions=SUPPORTED_VERSIONS,
             capabilities=capabilities,
-            cache=self._no_cache(),
+            cache=self._cache_hint(),
         )
 
     async def ListTools(self, request, context):
@@ -122,6 +140,7 @@ class _McpV2Servicer(mcp_v2_pb2_grpc.McpServicer):
                 description=t.description,
                 input_schema=t.input_schema,
                 output_schema=t.output_schema,
+                icons=_icons(t.icons),
             )
             if t.annotations:
                 tool.annotations.title = t.annotations.title
@@ -134,13 +153,19 @@ class _McpV2Servicer(mcp_v2_pb2_grpc.McpServicer):
             tools.append(tool)
         page, next_cursor = _paginate(tools, request.cursor, self._server.page_size)
         return pb.ListToolsResult(
-            meta=self._result_meta(), tools=page, next_cursor=next_cursor, cache=self._no_cache()
+            meta=self._result_meta(), tools=page, next_cursor=next_cursor, cache=self._cache_hint()
         )
 
     async def ListResources(self, request, context):
         await self._check_meta(request, context)
         resources = [
-            pb.Resource(uri=r.uri, name=r.name, description=r.description, mime_type=r.mime_type)
+            pb.Resource(
+                uri=r.uri,
+                name=r.name,
+                description=r.description,
+                mime_type=r.mime_type,
+                icons=_icons(r.icons),
+            )
             for r in self._server._resources.values()
         ]
         page, next_cursor = _paginate(resources, request.cursor, self._server.page_size)
@@ -148,7 +173,7 @@ class _McpV2Servicer(mcp_v2_pb2_grpc.McpServicer):
             meta=self._result_meta(),
             resources=page,
             next_cursor=next_cursor,
-            cache=self._no_cache(),
+            cache=self._cache_hint(),
         )
 
     async def ListResourceTemplates(self, request, context):
@@ -159,6 +184,7 @@ class _McpV2Servicer(mcp_v2_pb2_grpc.McpServicer):
                 name=t.name,
                 description=t.description,
                 mime_type=t.mime_type,
+                icons=_icons(t.icons),
             )
             for t in self._server._resource_templates.values()
         ]
@@ -167,7 +193,7 @@ class _McpV2Servicer(mcp_v2_pb2_grpc.McpServicer):
             meta=self._result_meta(),
             templates=page,
             next_cursor=next_cursor,
-            cache=self._no_cache(),
+            cache=self._cache_hint(),
         )
 
     async def ListPrompts(self, request, context):
@@ -177,12 +203,16 @@ class _McpV2Servicer(mcp_v2_pb2_grpc.McpServicer):
                 name=p.name,
                 description=p.description,
                 arguments=[pb.PromptArgument(**a) for a in p.arguments],
+                icons=_icons(p.icons),
             )
             for p in self._server._prompts.values()
         ]
         page, next_cursor = _paginate(prompts, request.cursor, self._server.page_size)
         return pb.ListPromptsResult(
-            meta=self._result_meta(), prompts=page, next_cursor=next_cursor, cache=self._no_cache()
+            meta=self._result_meta(),
+            prompts=page,
+            next_cursor=next_cursor,
+            cache=self._cache_hint(),
         )
 
     async def Complete(self, request, context):
@@ -253,7 +283,10 @@ class _McpV2Servicer(mcp_v2_pb2_grpc.McpServicer):
                         "content": response.elicit.content,
                     }
 
-            ctx = _V2Context(request.meta, emit, answers)
+            trace = {
+                key: value for key, value in context.invocation_metadata() if key in _TRACE_KEYS
+            }
+            ctx = _V2Context(request.meta, emit, answers, trace)
             try:
                 result = await self._server._dispatch_tool(name, arguments, ctx)
             except _NeedsInput as need:
@@ -279,11 +312,18 @@ class _McpV2Servicer(mcp_v2_pb2_grpc.McpServicer):
             )
 
         try:
-            # aclosing: if this RPC is cancelled while suspended at the yield below,
-            # the inner generator is closed at once and its tool task cancelled.
-            async with aclosing(self._stream(work)) as events:
-                async for event in events:
-                    yield event
+            if not request.meta.HasField("progress_token") and not request.meta.HasField(
+                "log_level"
+            ):
+                # Nothing can be emitted before the result, so there is nothing to
+                # multiplex: run the work on this task and yield what it returns.
+                yield await work(_discard)
+            else:
+                # aclosing: if this RPC is cancelled while suspended at the yield below,
+                # the inner generator is closed at once and its tool task cancelled.
+                async with aclosing(self._stream(work)) as events:
+                    async for event in events:
+                        yield event
         except McpError as error:
             await abort(context, error)
         except Exception:
@@ -308,7 +348,7 @@ class _McpV2Servicer(mcp_v2_pb2_grpc.McpServicer):
                 content=[
                     pb.ContentItem(uri=uri, **_resource_content_fields(raw, resource.mime_type))
                 ],
-                cache=self._no_cache(),
+                cache=self._cache_hint(),
             )
         )
 

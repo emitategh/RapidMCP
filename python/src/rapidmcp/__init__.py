@@ -16,6 +16,7 @@ from rapidmcp.elicitation import (
     build_elicitation_schema,
 )
 from rapidmcp.errors import McpError, ToolError
+from rapidmcp.icons import Icon
 from rapidmcp.middleware import (
     LoggingMiddleware,
     Middleware,
@@ -59,6 +60,7 @@ __all__ = [
     "EnumField",
     "FloatField",
     "GetPromptResult",
+    "Icon",
     "Image",
     "IntField",
     "ListResult",

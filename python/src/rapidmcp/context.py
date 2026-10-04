@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Mapping
+from types import MappingProxyType
 
 from rapidmcp._generated import mcp_pb2
 from rapidmcp.elicitation import ElicitationResult, build_elicitation_schema
@@ -18,6 +20,8 @@ class Context:
 
     # Set by the tool manager when a tool returns a JSON object; read by the v2 servicer.
     _structured_content: dict | None = None
+    # W3C trace context of the request (traceparent, tracestate, baggage). Empty on v1.
+    trace_context: Mapping[str, str] = MappingProxyType({})
 
     def __init__(
         self,

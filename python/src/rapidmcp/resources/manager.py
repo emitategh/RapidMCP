@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 
+from rapidmcp.icons import Icon, _checked_icons
 from rapidmcp.resources.resource import RegisteredResource, RegisteredResourceTemplate
 from rapidmcp.resources.uri_template import match_uri_template
 
@@ -21,7 +22,10 @@ class ResourceManager:
         *,
         description: str | None = None,
         mime_type: str = "text/plain",
+        icons: Iterable[Icon] | None = None,
     ) -> Callable:
+        checked_icons = _checked_icons(icons)
+
         def decorator(fn: Callable) -> Callable:
             desc = description or (fn.__doc__ or "").strip()
             self._resources[uri] = RegisteredResource(
@@ -30,6 +34,7 @@ class ResourceManager:
                 description=desc,
                 mime_type=mime_type,
                 handler=fn,
+                icons=checked_icons,
             )
             return fn
 
@@ -41,7 +46,10 @@ class ResourceManager:
         *,
         description: str | None = None,
         mime_type: str = "text/plain",
+        icons: Iterable[Icon] | None = None,
     ) -> Callable:
+        checked_icons = _checked_icons(icons)
+
         def decorator(fn: Callable) -> Callable:
             desc = description or (fn.__doc__ or "").strip()
             self._resource_templates[uri_template] = RegisteredResourceTemplate(
@@ -50,6 +58,7 @@ class ResourceManager:
                 description=desc,
                 mime_type=mime_type,
                 handler=fn,
+                icons=checked_icons,
             )
             return fn
 
