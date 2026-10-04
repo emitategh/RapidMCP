@@ -143,7 +143,7 @@ benchmark/                         ← latency harness vs FastMCP HTTP
 
 ## Current state (2026-10-04)
 
-- **453 Python tests + 312 TypeScript tests passing** (Docker-backed files excluded)
+- **465 Python tests + 320 TypeScript tests passing** (Docker-backed files excluded)
 - Two protocols on one port. v1 (`mcp.Mcp/Session`) is the original bidi stream and is frozen. v2 (`mcp.v2.Mcp`) follows MCP 2026-07-28: stateless, per-request metadata, one RPC per operation, streaming calls for progress/logs, input-required rounds for elicitation (signed `request_state`), one opt-in `Listen` stream for notifications, cache hints, icons, trace context, structured tool results
 - `Client(mode="legacy" | "modern" | "auto")`; default `legacy`. Sampling and roots are v1 only
 - Design: `docs/superpowers/specs/2026-10-01-proto-v2-stateless-design.md`; release note: `docs/breaking-changes-next-release.md`
