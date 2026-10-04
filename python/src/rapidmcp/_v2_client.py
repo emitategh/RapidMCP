@@ -6,7 +6,7 @@ import asyncio
 import itertools
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 
 import grpc
 from grpc import aio
@@ -28,6 +28,7 @@ from rapidmcp.types import (
     _convert_call_tool_result_v2,
     _convert_complete_result,
     _convert_get_prompt_result,
+    _convert_icons,
     _convert_prompt,
     _convert_read_resource_result,
     _convert_resource,
@@ -39,6 +40,15 @@ logger = logging.getLogger("rapidmcp.client")
 
 PROTOCOL_VERSION = "2026-07-28"
 MAX_INPUT_ROUNDS = 10
+TRACE_KEYS = ("traceparent", "tracestate", "baggage")
+
+
+def _cache(result) -> dict:
+    """ttl_ms / cache_scope keyword arguments from a result's cache hint."""
+    if not result.HasField("cache"):
+        return {}
+    scope = "public" if result.cache.scope == pb.CACHE_SCOPE_PUBLIC else "private"
+    return {"ttl_ms": result.cache.ttl_ms, "cache_scope": scope}
 
 
 class _V2Transport:
@@ -49,7 +59,9 @@ class _V2Transport:
         timeout: float,
         elicitation: Callable[[], tuple[Callable | None, bool]],
         notifications: NotificationRegistry,
+        trace_context: Callable[[], Mapping[str, str]] | None = None,
     ) -> None:
+        self._trace_context = trace_context
         self._stub = mcp_v2_pb2_grpc.McpStub(channel)
         self._metadata = metadata
         self._timeout = timeout
@@ -74,9 +86,18 @@ class _V2Transport:
             meta.log_level = "debug"
         return meta
 
-    async def _call(self, method, request):
+    def _call_metadata(self, *, traced: bool = True) -> list[tuple[str, str]]:
+        """The call's gRPC metadata: credentials, plus the current trace context."""
+        if not traced or self._trace_context is None:
+            return self._metadata
+        current = self._trace_context() or {}
+        return self._metadata + [(key, current[key]) for key in TRACE_KEYS if key in current]
+
+    async def _call(self, method, request, *, traced: bool = True):
         try:
-            return await method(request, metadata=self._metadata, timeout=self._timeout)
+            return await method(
+                request, metadata=self._call_metadata(traced=traced), timeout=self._timeout
+            )
         except aio.AioRpcError as exc:
             error = error_from_rpc(exc.code(), exc.details(), exc.trailing_metadata())
             if error is None:
@@ -84,7 +105,10 @@ class _V2Transport:
             raise error from None
 
     async def discover(self) -> ServerInfo:
-        result = await self._call(self._stub.Discover, pb.DiscoverRequest(meta=self._meta()))
+        # Discovery is not part of any user operation, so it carries no trace context.
+        result = await self._call(
+            self._stub.Discover, pb.DiscoverRequest(meta=self._meta()), traced=False
+        )
         caps = result.capabilities
         return ServerInfo(
             server_name=result.meta.server_info.name,
@@ -96,6 +120,7 @@ class _V2Transport:
                 resources=caps.HasField("resources"),
                 prompts=caps.HasField("prompts"),
             ),
+            icons=_convert_icons(result.meta.server_info),
         )
 
     async def list_tools(self, cursor: str | None) -> ListResult:
@@ -105,6 +130,7 @@ class _V2Transport:
         return ListResult(
             items=[_convert_tool_v2(t) for t in result.tools],
             next_cursor=result.next_cursor or None,
+            **_cache(result),
         )
 
     async def list_resources(self, cursor: str | None) -> ListResult:
@@ -115,6 +141,7 @@ class _V2Transport:
         return ListResult(
             items=[_convert_resource(r) for r in result.resources],
             next_cursor=result.next_cursor or None,
+            **_cache(result),
         )
 
     async def list_resource_templates(self, cursor: str | None) -> ListResult:
@@ -125,6 +152,7 @@ class _V2Transport:
         return ListResult(
             items=[_convert_resource_template(t) for t in result.templates],
             next_cursor=result.next_cursor or None,
+            **_cache(result),
         )
 
     async def list_prompts(self, cursor: str | None) -> ListResult:
@@ -134,6 +162,7 @@ class _V2Transport:
         return ListResult(
             items=[_convert_prompt(p) for p in result.prompts],
             next_cursor=result.next_cursor or None,
+            **_cache(result),
         )
 
     async def complete(
@@ -181,7 +210,9 @@ class _V2Transport:
                 resource_subscriptions=uris,
             ),
         )
-        call = self._stub.Listen(request, metadata=self._metadata)  # long-lived: no deadline
+        call = self._stub.Listen(
+            request, metadata=self._call_metadata(traced=False)
+        )  # long-lived: no deadline
         try:
             async for event in call:
                 kind = event.WhichOneof("event")
@@ -199,7 +230,7 @@ class _V2Transport:
 
     async def _stream(self, method, request, timeout: float | None = None):
         """Run a streaming RPC to its terminal event, feeding progress and log handlers."""
-        call = method(request, metadata=self._metadata, timeout=timeout or self._timeout)
+        call = method(request, metadata=self._call_metadata(), timeout=timeout or self._timeout)
         try:
             async for event in call:
                 kind = event.WhichOneof("event")
@@ -297,7 +328,11 @@ class _V2Transport:
                 meta=self._meta(), uri=uri, input_responses=responses, request_state=state
             )
 
-        return _convert_read_resource_result(await self._run(self._stub.ReadResource, build))
+        wire = await self._run(self._stub.ReadResource, build)
+        result = _convert_read_resource_result(wire)
+        hints = _cache(wire)
+        result.ttl_ms, result.cache_scope = hints.get("ttl_ms"), hints.get("cache_scope")
+        return result
 
     async def get_prompt(self, name: str, arguments: dict[str, str] | None) -> GetPromptResult:
         def build(responses, state):

@@ -7,6 +7,7 @@ import contextlib
 import json
 import logging
 import time
+from collections.abc import Callable, Mapping
 from typing import Any, Literal
 
 import grpc
@@ -52,6 +53,10 @@ class Client:
 
     Direct ``connect()`` / ``close()`` calls bypass ref-counting and are still
     supported for explicit lifecycle management.
+
+    ``trace_context`` is called once per v2 request and may return
+    ``traceparent``, ``tracestate`` and ``baggage``; they travel as gRPC
+    metadata and reach the tool as ``ctx.trace_context``.
     """
 
     def __init__(
@@ -61,7 +66,9 @@ class Client:
         tls: ClientTLSConfig | None = None,
         request_timeout: float = 30.0,
         mode: Literal["legacy", "modern", "auto"] = "legacy",
+        trace_context: Callable[[], Mapping[str, str]] | None = None,
     ) -> None:
+        self._trace_context = trace_context
         if mode not in ("legacy", "modern", "auto"):
             raise ValueError(f"mode must be 'legacy', 'modern' or 'auto', not {mode!r}")
         self._mode = mode
@@ -146,6 +153,7 @@ class Client:
             self._request_timeout,
             elicitation=lambda: (self._elicitation_handler, self._elicitation_url),
             notifications=self._notifications,
+            trace_context=self._trace_context,
         )
         try:
             self.server_info = await transport.discover()

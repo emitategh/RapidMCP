@@ -12,6 +12,8 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
+from rapidmcp.icons import Icon
+
 # ---------------------------------------------------------------------------
 # Content
 # ---------------------------------------------------------------------------
@@ -73,6 +75,7 @@ class Tool:
     input_schema: dict[str, Any]  # already parsed from JSON
     output_schema: dict[str, Any] | None = None  # None when absent
     annotations: ToolAnnotationInfo = field(default_factory=ToolAnnotationInfo)
+    icons: list[Icon] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -88,6 +91,7 @@ class Resource:
     name: str
     description: str = ""
     mime_type: str = ""
+    icons: list[Icon] = field(default_factory=list)
 
 
 @dataclass
@@ -98,6 +102,7 @@ class ResourceTemplate:
     name: str
     description: str = ""
     mime_type: str = ""
+    icons: list[Icon] = field(default_factory=list)
 
 
 @dataclass
@@ -105,6 +110,9 @@ class ReadResourceResult:
     """Parsed result from a ``read_resource`` request."""
 
     content: list[ContentItem]
+    # Freshness hint from a v2 server; None when the server sent none (v1).
+    ttl_ms: int | None = None
+    cache_scope: str | None = None  # "private" or "public"
 
 
 # ---------------------------------------------------------------------------
@@ -128,6 +136,7 @@ class Prompt:
     name: str
     description: str = ""
     arguments: list[PromptArgument] = field(default_factory=list)
+    icons: list[Icon] = field(default_factory=list)
 
 
 @dataclass
@@ -184,6 +193,9 @@ class ListResult:
 
     items: list
     next_cursor: str | None
+    # Freshness hint from a v2 server; None when the server sent none (v1).
+    ttl_ms: int | None = None
+    cache_scope: str | None = None  # "private" or "public"
 
 
 @dataclass
@@ -193,6 +205,7 @@ class ServerInfo:
     server_name: str
     server_version: str
     capabilities: Any  # mcp_pb2.ServerCapabilities — kept as proto to avoid circular import
+    icons: list[Icon] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -237,12 +250,21 @@ def _convert_tool(p) -> Tool:
     )
 
 
+def _convert_icons(p) -> list[Icon]:
+    """Icons of a listed item; v1 messages have none."""
+    return [
+        Icon(src=i.src, mime_type=i.mime_type, sizes=tuple(i.sizes), theme=i.theme)
+        for i in getattr(p, "icons", [])
+    ]
+
+
 def _convert_resource(p) -> Resource:
     return Resource(
         uri=p.uri,
         name=p.name,
         description=p.description,
         mime_type=p.mime_type,
+        icons=_convert_icons(p),
     )
 
 
@@ -252,6 +274,7 @@ def _convert_resource_template(p) -> ResourceTemplate:
         name=p.name,
         description=p.description,
         mime_type=p.mime_type,
+        icons=_convert_icons(p),
     )
 
 
@@ -268,6 +291,7 @@ def _convert_prompt(p) -> Prompt:
         name=p.name,
         description=p.description,
         arguments=[_convert_prompt_argument(a) for a in p.arguments],
+        icons=_convert_icons(p),
     )
 
 
@@ -310,6 +334,7 @@ def _convert_tool_v2(p) -> Tool:
             idempotent_hint=hint("idempotent_hint", False),
             open_world_hint=hint("open_world_hint", True),
         ),
+        icons=_convert_icons(p),
     )
 
 
