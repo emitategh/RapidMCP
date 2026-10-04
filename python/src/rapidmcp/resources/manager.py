@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from rapidmcp.resources.resource import RegisteredResource, RegisteredResourceTemplate
+from rapidmcp.resources.uri_template import match_uri_template
 
 
 class ResourceManager:
@@ -53,6 +54,19 @@ class ResourceManager:
             return fn
 
         return decorator
+
+    def resolve(
+        self, uri: str
+    ) -> tuple[RegisteredResource | RegisteredResourceTemplate, dict[str, str]] | None:
+        """The resource or template that serves *uri*, with its template parameters."""
+        resource = self._resources.get(uri)
+        if resource:
+            return resource, {}
+        for template in self._resource_templates.values():
+            params = match_uri_template(uri, template.uri_template)
+            if params is not None:
+                return template, params
+        return None
 
     def list_registered_resources(self) -> list[RegisteredResource]:
         return list(self._resources.values())

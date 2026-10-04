@@ -11,6 +11,7 @@ from typing import Any
 
 from rapidmcp._generated import mcp_pb2
 from rapidmcp.content import Audio, Image
+from rapidmcp.errors import INVALID_PARAMS, McpError
 
 
 async def _invoke(fn: Callable[..., Any], /, *args: Any, **kwargs: Any) -> Any:
@@ -91,3 +92,35 @@ def _prefix_resource_uri(uri: str, prefix: str) -> str:
         return f"{prefix}/{uri}"
     scheme, rest = uri.split("://", 1)
     return f"{scheme}://{prefix}/{rest}"
+
+
+def _parse_tool_arguments(name: str, text: str) -> dict:
+    """Decode a call's JSON arguments. Anything but a JSON object is INVALID_PARAMS."""
+    try:
+        arguments = json.loads(text) if text else {}
+    except ValueError:
+        raise McpError(
+            INVALID_PARAMS, f"Invalid arguments for tool '{name}': not valid JSON"
+        ) from None
+    if not isinstance(arguments, dict):
+        raise McpError(
+            INVALID_PARAMS, f"Invalid arguments for tool '{name}': expected a JSON object"
+        )
+    return arguments
+
+
+def _resource_content_fields(raw: Any, mime_type: str) -> dict[str, Any]:
+    """Content fields for a resource handler's return value.
+
+    Bytes become image / audio / resource content according to the mime type;
+    anything else is text.
+    """
+    if isinstance(raw, bytes):
+        if mime_type.startswith("image/"):
+            kind = "image"
+        elif mime_type.startswith("audio/"):
+            kind = "audio"
+        else:
+            kind = "resource"
+        return {"type": kind, "data": raw, "mime_type": mime_type}
+    return {"type": "text", "text": str(raw), "mime_type": mime_type}

@@ -16,6 +16,9 @@ _DEFAULT_TIMEOUT: float = 30.0
 class Context:
     """Provides sampling and elicitation to tool handlers via dependency injection."""
 
+    # Set by the tool manager when a tool returns a JSON object; read by the v2 servicer.
+    _structured_content: dict | None = None
+
     def __init__(
         self,
         client_capabilities: mcp_pb2.ClientCapabilities,

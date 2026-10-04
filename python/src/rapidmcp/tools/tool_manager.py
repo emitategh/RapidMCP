@@ -149,6 +149,8 @@ class ToolManager:
                     break
         try:
             result = await _invoke(tool.handler, **args)
+            if isinstance(result, dict) and isinstance(ctx, Context):
+                ctx._structured_content = result
             content = _to_content_items(result)
             return mcp_pb2.CallToolResponse(content=content, is_error=False)
         except ToolError as e:

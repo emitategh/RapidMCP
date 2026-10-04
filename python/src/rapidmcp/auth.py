@@ -87,15 +87,14 @@ class _AuthInterceptor(grpc_aio.ServerInterceptor):
             return handler._replace(unary_unary=auth_unary_unary)
 
         if handler.unary_stream is not None:
-            # NOTE: RapidMCP has no unary_stream RPCs. If one is added,
-            # this wrapper must become an async generator: `async for msg in original(...): yield msg`
             original = handler.unary_stream
 
             async def auth_unary_stream(request, context):
                 if not await self._check_token(context):
                     await context.abort(grpc.StatusCode.UNAUTHENTICATED, "Invalid token")
                     return
-                return await original(request, context)
+                async for msg in original(request, context):
+                    yield msg
 
             return handler._replace(unary_stream=auth_unary_stream)
 

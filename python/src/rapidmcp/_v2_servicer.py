@@ -7,12 +7,16 @@ an earlier request left behind.
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
+from contextlib import aclosing
 from typing import TYPE_CHECKING
 
 from rapidmcp._generated import mcp_v2_pb2 as pb
 from rapidmcp._generated import mcp_v2_pb2_grpc
-from rapidmcp._utils import _invoke, _paginate
+from rapidmcp._utils import _invoke, _paginate, _parse_tool_arguments, _resource_content_fields
+from rapidmcp._v2_context import LOG_LEVELS, _V2Context
 from rapidmcp._v2_errors import abort
 from rapidmcp.errors import (
     INTERNAL_ERROR,
@@ -68,6 +72,8 @@ class _McpV2Servicer(mcp_v2_pb2_grpc.McpServicer):
                     },
                 ),
             )
+        if meta.HasField("log_level") and meta.log_level not in LOG_LEVELS:
+            await abort(context, McpError(INVALID_PARAMS, f"Unknown log level '{meta.log_level}'"))
 
     # ── RPCs ─────────────────────────────────────────────────────────────
 
@@ -178,3 +184,131 @@ class _McpV2Servicer(mcp_v2_pb2_grpc.McpServicer):
                 McpError(INTERNAL_ERROR, f"Completion handler for '{request.ref.name}' failed"),
             )
         return pb.CompleteResult(meta=self._result_meta(), values=values, total=len(values))
+
+    # ── streaming RPCs ───────────────────────────────────────────────────
+
+    @staticmethod
+    async def _stream(work):
+        """Yield whatever *work* emits while it runs, then its final event.
+
+        *work* is ``async (emit) -> terminal event``. When the RPC is cancelled
+        (the client went away, or its deadline passed) the work is cancelled too.
+        """
+        queue: asyncio.Queue = asyncio.Queue()
+        task = asyncio.ensure_future(work(queue.put))
+        getter: asyncio.Future | None = None
+        try:
+            while not task.done():
+                getter = asyncio.ensure_future(queue.get())
+                await asyncio.wait({getter, task}, return_when=asyncio.FIRST_COMPLETED)
+                if getter.done():
+                    yield getter.result()
+                else:
+                    getter.cancel()
+            while not queue.empty():
+                yield queue.get_nowait()
+            yield task.result()
+        finally:
+            if getter is not None and not getter.done():
+                getter.cancel()
+            if not task.done():
+                task.cancel()
+
+    async def CallTool(self, request, context):
+        await self._check_meta(request, context)
+        name = request.name
+
+        async def work(emit):
+            arguments = _parse_tool_arguments(name, request.arguments)
+            ctx = _V2Context(request.meta, emit)
+            result = await self._server._dispatch_tool(name, arguments, ctx)
+            structured = ctx._structured_content
+            return pb.CallToolEvent(
+                complete=pb.CallToolResult(
+                    meta=self._result_meta(),
+                    content=[
+                        pb.ContentItem(
+                            type=c.type, text=c.text, data=c.data, mime_type=c.mime_type, uri=c.uri
+                        )
+                        for c in result.content
+                    ],
+                    is_error=result.is_error,
+                    structured_content=json.dumps(structured) if structured is not None else "",
+                )
+            )
+
+        try:
+            # aclosing: if this RPC is cancelled while suspended at the yield below,
+            # the inner generator is closed at once and its tool task cancelled.
+            async with aclosing(self._stream(work)) as events:
+                async for event in events:
+                    yield event
+        except McpError as error:
+            await abort(context, error)
+        except Exception:
+            logger.exception("Tool call '%s' failed outside the handler", name)
+            await abort(context, McpError(INTERNAL_ERROR, f"Tool call '{name}' failed"))
+
+    async def ReadResource(self, request, context):
+        await self._check_meta(request, context)
+        uri = request.uri
+        found = self._server._resource_manager.resolve(uri)
+        if found is None:
+            await abort(context, McpError(INVALID_PARAMS, f"Resource '{uri}' not found"))
+        resource, params = found
+        try:
+            raw = await _invoke(resource.handler, **params)
+        except Exception:
+            logger.exception("Resource handler for '%s' raised", uri)
+            await abort(context, McpError(INTERNAL_ERROR, f"Resource handler for '{uri}' failed"))
+        yield pb.ReadResourceEvent(
+            complete=pb.ReadResourceResult(
+                meta=self._result_meta(),
+                content=[
+                    pb.ContentItem(uri=uri, **_resource_content_fields(raw, resource.mime_type))
+                ],
+                cache=self._no_cache(),
+            )
+        )
+
+    async def GetPrompt(self, request, context):
+        await self._check_meta(request, context)
+        name = request.name
+        prompt = self._server._prompts.get(name)
+        if prompt is None:
+            await abort(context, McpError(INVALID_PARAMS, f"Prompt '{name}' not found"))
+        arguments = dict(request.arguments)
+        declared = [a["name"] for a in prompt.arguments]
+        missing = [
+            a["name"] for a in prompt.arguments if a["required"] and a["name"] not in arguments
+        ]
+        if missing:
+            await abort(
+                context,
+                McpError(
+                    INVALID_PARAMS,
+                    f"Missing required argument(s) for prompt '{name}': {', '.join(missing)}",
+                ),
+            )
+        unknown = [key for key in arguments if key not in declared]
+        if unknown:
+            await abort(
+                context,
+                McpError(
+                    INVALID_PARAMS,
+                    f"Unknown argument(s) for prompt '{name}': {', '.join(unknown)}",
+                ),
+            )
+        try:
+            text = await _invoke(prompt.handler, **arguments)
+        except Exception:
+            logger.exception("Prompt handler '%s' raised", name)
+            await abort(context, McpError(INTERNAL_ERROR, f"Prompt handler '{name}' failed"))
+        yield pb.GetPromptEvent(
+            complete=pb.GetPromptResult(
+                meta=self._result_meta(),
+                messages=[
+                    pb.PromptMessage(role="user", content=pb.ContentItem(type="text", text=text))
+                ],
+            )
+        )
