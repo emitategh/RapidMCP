@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import secrets
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import replace
@@ -46,8 +47,12 @@ class RapidMCP:
         cache_scope: str = "private",
         icons: Iterable[Icon] | None = None,
     ) -> None:
-        if cache_ttl < 0:
-            raise ValueError(f"cache_ttl must be 0 or more seconds, got {cache_ttl!r}")
+        if not math.isfinite(cache_ttl) or cache_ttl < 0:
+            raise ValueError(
+                f"cache_ttl must be a finite number of seconds, 0 or more; got {cache_ttl!r}"
+            )
+        if state_secret is not None and len(state_secret) == 0:
+            raise ValueError("state_secret must not be empty")
         if cache_scope not in ("private", "public"):
             raise ValueError(f"cache_scope must be 'private' or 'public', got {cache_scope!r}")
         # How long clients may treat lists and resource reads as fresh, and whether

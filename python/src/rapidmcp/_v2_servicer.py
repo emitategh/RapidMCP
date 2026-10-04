@@ -18,7 +18,7 @@ from rapidmcp._generated import mcp_v2_pb2_grpc
 from rapidmcp._utils import _invoke, _paginate, _parse_tool_arguments, _resource_content_fields
 from rapidmcp._v2_context import LOG_LEVELS, _NeedsInput, _V2Context
 from rapidmcp._v2_errors import abort
-from rapidmcp._v2_state import operation_digest, principal_digest, seal, unseal
+from rapidmcp._v2_state import operation_digest, principal_digest, seal, unseal_state
 from rapidmcp.errors import (
     INTERNAL_ERROR,
     INVALID_PARAMS,
@@ -40,6 +40,23 @@ def _icons(icons) -> list[pb.Icon]:
     return [
         pb.Icon(src=i.src, mime_type=i.mime_type, sizes=list(i.sizes), theme=i.theme) for i in icons
     ]
+
+
+def _structured_text(ctx, result) -> str:
+    """The structured result as JSON text, taken from what the middleware chain let through.
+
+    A tool that returned an object produced one JSON text item. If that is still
+    what the response holds, it is the structured content; if middleware replaced
+    it with something else, there is none.
+    """
+    if ctx._structured_content is None or result.is_error or len(result.content) != 1:
+        return ""
+    text = result.content[0].text
+    try:
+        parsed = json.loads(text)
+    except ValueError:
+        return ""
+    return text if isinstance(parsed, dict) else ""
 
 
 async def _discard(event) -> None:
@@ -97,14 +114,14 @@ class _McpV2Servicer(mcp_v2_pb2_grpc.McpServicer):
             return ""
         return principal_digest(dict(context.invocation_metadata()).get("authorization"))
 
-    def _seal(self, answers: dict, operation: str, principal: str) -> bytes:
+    def _seal(self, answers: dict, operation: str, principal: str, asked: list[str]) -> bytes:
         if not self._server._state_secret_configured and not self._warned_about_secret:
             self._warned_about_secret = True
             logger.warning(
                 "Issuing request_state signed with a secret generated at start-up. "
                 "Set RapidMCP(state_secret=...) so every replica can verify it."
             )
-        return seal(self._server._state_secret, answers, operation, principal)
+        return seal(self._server._state_secret, answers, operation, principal, asked=asked)
 
     # ── RPCs ─────────────────────────────────────────────────────────────
 
@@ -224,6 +241,8 @@ class _McpV2Servicer(mcp_v2_pb2_grpc.McpServicer):
             values = await _invoke(
                 completion.handler, request.argument.name, request.argument.value
             )
+        except McpError as error:
+            await abort(context, error)
         except Exception:
             logger.exception("Completion handler for '%s' raised", request.ref.name)
             await abort(
@@ -271,13 +290,15 @@ class _McpV2Servicer(mcp_v2_pb2_grpc.McpServicer):
             principal = self._principal(context)
 
             # Earlier answers come back inside the state; the latest ones in the request.
+            # An answer counts only if a state this server signed says it was asked for.
             answers: dict[str, dict[str, str]] = {}
+            asked: list[str] = []
             if request.request_state:
-                answers = unseal(
+                answers, asked = unseal_state(
                     self._server._state_secret, request.request_state, operation, principal
                 )
             for key, response in request.input_responses.items():
-                if response.HasField("elicit"):
+                if key in asked and response.HasField("elicit"):
                     answers[key] = {
                         "action": response.elicit.action,
                         "content": response.elicit.content,
@@ -293,10 +314,11 @@ class _McpV2Servicer(mcp_v2_pb2_grpc.McpServicer):
                 return pb.CallToolEvent(
                     input_required=pb.InputRequired(
                         input_requests=need.requests,
-                        request_state=self._seal(answers, operation, principal),
+                        request_state=self._seal(
+                            answers, operation, principal, list(need.requests)
+                        ),
                     )
                 )
-            structured = ctx._structured_content
             return pb.CallToolEvent(
                 complete=pb.CallToolResult(
                     meta=self._result_meta(),
@@ -307,7 +329,7 @@ class _McpV2Servicer(mcp_v2_pb2_grpc.McpServicer):
                         for c in result.content
                     ],
                     is_error=result.is_error,
-                    structured_content=json.dumps(structured) if structured is not None else "",
+                    structured_content=_structured_text(ctx, result),
                 )
             )
 
@@ -339,6 +361,8 @@ class _McpV2Servicer(mcp_v2_pb2_grpc.McpServicer):
         resource, params = found
         try:
             raw = await _invoke(resource.handler, **params)
+        except McpError as error:
+            await abort(context, error)
         except Exception:
             logger.exception("Resource handler for '%s' raised", uri)
             await abort(context, McpError(INTERNAL_ERROR, f"Resource handler for '{uri}' failed"))
@@ -382,6 +406,8 @@ class _McpV2Servicer(mcp_v2_pb2_grpc.McpServicer):
             )
         try:
             text = await _invoke(prompt.handler, **arguments)
+        except McpError as error:
+            await abort(context, error)
         except Exception:
             logger.exception("Prompt handler '%s' raised", name)
             await abort(context, McpError(INTERNAL_ERROR, f"Prompt handler '{name}' failed"))

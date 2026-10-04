@@ -154,9 +154,9 @@ class ToolManager:
                     break
         try:
             result = await _invoke(tool.handler, **args)
+            content = _to_content_items(result)
             if isinstance(result, dict) and isinstance(ctx, Context):
                 ctx._structured_content = result
-            content = _to_content_items(result)
             return mcp_pb2.CallToolResponse(content=content, is_error=False)
         except ToolError as e:
             # Raised on purpose by the handler — the message is meant for the caller.

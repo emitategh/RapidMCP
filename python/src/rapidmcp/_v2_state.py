@@ -40,12 +40,14 @@ def seal(
     *,
     now: float | None = None,
     ttl: float = STATE_TTL_SECONDS,
+    asked: list[str] | None = None,
 ) -> bytes:
+    """Sign *answers*; *asked* names the questions this state is waiting on."""
     issued = time.time() if now is None else now
-    payload = json.dumps(
-        {"v": 1, "exp": int(issued + ttl), "op": operation, "sub": principal, "answers": answers},
-        separators=(",", ":"),
-    ).encode()
+    data = {"v": 1, "exp": int(issued + ttl), "op": operation, "sub": principal, "answers": answers}
+    if asked:
+        data["asked"] = sorted(asked)
+    payload = json.dumps(data, separators=(",", ":")).encode()
     return hmac.new(secret, payload, hashlib.sha256).digest() + payload
 
 
@@ -53,15 +55,18 @@ def _rejected(reason: str) -> McpError:
     return McpError(INVALID_PARAMS, f"Invalid request_state: {reason}")
 
 
-def unseal(
+def unseal_state(
     secret: bytes,
     state: bytes,
     operation: str,
     principal: str,
     *,
     now: float | None = None,
-) -> dict[str, dict[str, str]]:
-    """The answers inside *state*, or ``McpError(-32602)`` if it cannot be trusted."""
+) -> tuple[dict[str, dict[str, str]], list[str]]:
+    """The answers inside *state* and the questions it is waiting on.
+
+    Raises ``McpError(-32602)`` if the state cannot be trusted.
+    """
     mac, payload = state[:_MAC_BYTES], state[_MAC_BYTES:]
     expected = hmac.new(secret, payload, hashlib.sha256).digest()
     if len(mac) != _MAC_BYTES or not hmac.compare_digest(mac, expected):
@@ -77,4 +82,19 @@ def unseal(
         raise _rejected("it belongs to a different request")
     if sub != principal:
         raise _rejected("it belongs to a different caller")
-    return answers
+    asked = data.get("asked", [])
+    if not isinstance(asked, list):
+        raise _rejected("it is malformed")
+    return answers, asked
+
+
+def unseal(
+    secret: bytes,
+    state: bytes,
+    operation: str,
+    principal: str,
+    *,
+    now: float | None = None,
+) -> dict[str, dict[str, str]]:
+    """The answers inside *state*, or ``McpError(-32602)`` if it cannot be trusted."""
+    return unseal_state(secret, state, operation, principal, now=now)[0]

@@ -198,8 +198,9 @@ class _V2Transport:
     ) -> None:
         """Hold a Listen stream open, handing its notifications to the registered handlers.
 
-        Sets *ready* once the server has acknowledged the subscription (or the
-        stream has ended, so a waiter never hangs). Runs until cancelled.
+        Sets *ready* once the server has acknowledged the subscription, or the
+        stream has ended (so a waiter never hangs). Raises if the stream ends
+        before the acknowledgement; afterwards it runs until cancelled.
         """
         request = pb.ListenRequest(
             meta=self._meta(),
@@ -213,20 +214,32 @@ class _V2Transport:
         call = self._stub.Listen(
             request, metadata=self._call_metadata(traced=False)
         )  # long-lived: no deadline
+        acknowledged = False
         try:
             async for event in call:
                 kind = event.WhichOneof("event")
                 if kind == "acknowledged":
+                    acknowledged = True
                     ready.set()
                 elif kind == "resource_updated":
                     await self._notify("resource_updated", {"uri": event.resource_updated.uri})
                 elif kind is not None:
                     await self._dispatch(kind, "")
         except aio.AioRpcError as exc:
-            logger.warning("subscription stream ended: %s", exc.code())
+            if acknowledged:
+                logger.warning("subscription stream ended: %s", exc.code())
+                return
+            error = error_from_rpc(exc.code(), exc.details(), exc.trailing_metadata())
+            if error is None:
+                raise
+            raise error from None
         finally:
             call.cancel()
             ready.set()
+        if not acknowledged:
+            raise McpError(
+                INTERNAL_ERROR, "The server closed the subscription without accepting it"
+            )
 
     async def _stream(self, method, request, timeout: float | None = None):
         """Run a streaming RPC to its terminal event, feeding progress and log handlers."""
