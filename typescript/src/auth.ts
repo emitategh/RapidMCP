@@ -24,6 +24,11 @@ export interface ClientOptions {
    * "modern" is the stateless v2 service; "auto" tries v2 and falls back to v1.
    */
   mode?: "legacy" | "modern" | "auto";
+  /**
+   * Called once per v2 request; may return traceparent, tracestate and baggage.
+   * They travel as gRPC metadata and reach the tool as ctx.traceContext.
+   */
+  traceContext?: () => Record<string, string>;
 }
 
 /** PEM material for the server: a file path or the bytes themselves. */

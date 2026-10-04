@@ -2,6 +2,8 @@
 
 // ── Content ──────────────────────────────────────────────
 
+import type { Icon } from "./icons.js";
+
 export interface ContentItem {
   type: string;
   text: string;
@@ -26,6 +28,7 @@ export interface Tool {
   inputSchema: Record<string, unknown>;
   outputSchema: Record<string, unknown> | null;
   annotations: ToolAnnotationInfo;
+  icons?: Icon[];
 }
 
 export interface CallToolResult {
@@ -42,6 +45,7 @@ export interface Resource {
   name: string;
   description: string;
   mimeType: string;
+  icons?: Icon[];
 }
 
 export interface ResourceTemplate {
@@ -49,10 +53,14 @@ export interface ResourceTemplate {
   name: string;
   description: string;
   mimeType: string;
+  icons?: Icon[];
 }
 
 export interface ReadResourceResult {
   content: ContentItem[];
+  /** Freshness hint from a v2 server, in ms; absent when the server sent none (v1). */
+  ttlMs?: number;
+  cacheScope?: "private" | "public";
 }
 
 // ── Prompt ───────────────────────────────────────────────
@@ -67,6 +75,7 @@ export interface Prompt {
   name: string;
   description: string;
   arguments: PromptArgument[];
+  icons?: Icon[];
 }
 
 export interface PromptMessage {
@@ -91,6 +100,9 @@ export interface CompleteResult {
 export interface ListResult<T> {
   items: T[];
   nextCursor: string | null;
+  /** Freshness hint from a v2 server, in ms; absent when the server sent none (v1). */
+  ttlMs?: number;
+  cacheScope?: "private" | "public";
 }
 
 // ── Server info ──────────────────────────────────────────
@@ -106,6 +118,7 @@ export interface ServerInfo {
   serverName: string;
   serverVersion: string;
   capabilities: ServerCapabilities;
+  icons?: Icon[];
 }
 
 // ── Proto → domain converters ────────────────────────────
@@ -287,4 +300,20 @@ export function convertToolV2(p: {
       openWorldHint: a?.openWorldHint ?? true,
     },
   };
+}
+
+/** Icons of a listed item, or undefined when it has none (as on v1). */
+export function convertIcons(
+  icons: Array<{ src: string; mimeType: string; sizes: string[]; theme: string }> | undefined,
+): Icon[] | undefined {
+  if (!icons || icons.length === 0) return undefined;
+  return icons.map((i) => ({ src: i.src, mimeType: i.mimeType, sizes: i.sizes, theme: i.theme }));
+}
+
+/** ttlMs / cacheScope from a result's cache hint. */
+export function convertCacheHint(
+  cache: { ttlMs: bigint; scope: number } | undefined,
+): { ttlMs?: number; cacheScope?: "private" | "public" } {
+  if (!cache) return {};
+  return { ttlMs: Number(cache.ttlMs), cacheScope: cache.scope === 1 ? "public" : "private" };
 }

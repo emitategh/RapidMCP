@@ -17,7 +17,9 @@ import type { NotificationRegistry } from "../session.js";
 import { buildMetadata, type ClientOptions } from "../auth.js";
 import { ErrorCode, McpError } from "../errors.js";
 import {
+  convertCacheHint,
   convertCallToolResult,
+  convertIcons,
   convertCompleteResult,
   convertGetPromptResult,
   convertReadResourceResult,
@@ -40,6 +42,7 @@ import { errorFromRpc } from "./errors.js";
 
 export const PROTOCOL_VERSION = "2026-07-28";
 export const MAX_INPUT_ROUNDS = 10;
+const TRACE_KEYS = ["traceparent", "tracestate", "baggage"];
 
 /** What a v2 server asks the user; passed to the elicitation handler. */
 export interface ElicitRequestInfo {
@@ -98,7 +101,19 @@ export class V2Transport {
   }
 
   /** Run one RPC with the token, a deadline, and MCP error translation. */
-  private async _call<T>(invoke: (options: CallOptions) => Promise<T>): Promise<T> {
+  /** The call's gRPC metadata: credentials, plus the current trace context. */
+  private _callMetadata(traced = true): Metadata | undefined {
+    const provider = traced ? this._opts.traceContext : undefined;
+    if (!this._opts.token && !provider) return undefined;
+    const metadata = this._opts.token ? buildMetadata(this._opts) : new Metadata();
+    const current = provider?.() ?? {};
+    for (const key of TRACE_KEYS) {
+      if (current[key] !== undefined) metadata.set(key, current[key]);
+    }
+    return metadata;
+  }
+
+  private async _call<T>(invoke: (options: CallOptions) => Promise<T>, traced = true): Promise<T> {
     let trailer: Metadata | null = null;
     const options: CallOptions = {
       signal: AbortSignal.timeout(this._timeoutMs),
@@ -106,7 +121,8 @@ export class V2Transport {
         trailer = t;
       },
     };
-    if (this._opts.token) options.metadata = buildMetadata(this._opts);
+    const metadata = this._callMetadata(traced);
+    if (metadata) options.metadata = metadata;
     try {
       return await invoke(options);
     } catch (err) {
@@ -121,7 +137,8 @@ export class V2Transport {
   }
 
   async discover(): Promise<ServerInfo> {
-    const result = await this._call((o) => this._client.discover({ meta: this._meta() }, o));
+    // Discovery is not part of any user operation, so it carries no trace context.
+    const result = await this._call((o) => this._client.discover({ meta: this._meta() }, o), false);
     const caps = result.capabilities;
     return {
       serverName: result.meta?.serverInfo?.name ?? "",
@@ -132,6 +149,7 @@ export class V2Transport {
         resources: caps?.resources !== undefined,
         prompts: caps?.prompts !== undefined,
       },
+      icons: convertIcons(result.meta?.serverInfo?.icons),
     };
   }
 
@@ -139,14 +157,22 @@ export class V2Transport {
     const result = await this._call((o) =>
       this._client.listTools({ meta: this._meta(), cursor: cursor ?? "" }, o),
     );
-    return { items: result.tools.map(convertToolV2), nextCursor: result.nextCursor || null };
+    return {
+      items: result.tools.map((t) => ({ ...convertToolV2(t), icons: convertIcons(t.icons) })),
+      nextCursor: result.nextCursor || null,
+      ...convertCacheHint(result.cache),
+    };
   }
 
   async listResources(cursor?: string): Promise<ListResult<Resource>> {
     const result = await this._call((o) =>
       this._client.listResources({ meta: this._meta(), cursor: cursor ?? "" }, o),
     );
-    return { items: result.resources.map(convertResource), nextCursor: result.nextCursor || null };
+    return {
+      items: result.resources.map((r) => ({ ...convertResource(r), icons: convertIcons(r.icons) })),
+      nextCursor: result.nextCursor || null,
+      ...convertCacheHint(result.cache),
+    };
   }
 
   async listResourceTemplates(cursor?: string): Promise<ListResult<ResourceTemplate>> {
@@ -154,8 +180,9 @@ export class V2Transport {
       this._client.listResourceTemplates({ meta: this._meta(), cursor: cursor ?? "" }, o),
     );
     return {
-      items: result.templates.map(convertResourceTemplate),
+      items: result.templates.map((t) => ({ ...convertResourceTemplate(t), icons: convertIcons(t.icons) })),
       nextCursor: result.nextCursor || null,
+      ...convertCacheHint(result.cache),
     };
   }
 
@@ -163,7 +190,11 @@ export class V2Transport {
     const result = await this._call((o) =>
       this._client.listPrompts({ meta: this._meta(), cursor: cursor ?? "" }, o),
     );
-    return { items: result.prompts.map(convertPrompt), nextCursor: result.nextCursor || null };
+    return {
+      items: result.prompts.map((p) => ({ ...convertPrompt(p), icons: convertIcons(p.icons) })),
+      nextCursor: result.nextCursor || null,
+      ...convertCacheHint(result.cache),
+    };
   }
 
   async complete(
@@ -215,7 +246,8 @@ export class V2Transport {
         trailer = t;
       },
     };
-    if (this._opts.token) options.metadata = buildMetadata(this._opts);
+    const metadata = this._callMetadata();
+    if (metadata) options.metadata = metadata;
 
     try {
       for await (const message of open(options)) {
@@ -332,7 +364,7 @@ export class V2Transport {
     const wire = await this._run<WireReadResourceResult>((round, o) =>
       this._client.readResource({ meta: this._meta(), uri, ...round }, o),
     );
-    return convertReadResourceResult(wire);
+    return { ...convertReadResourceResult(wire), ...convertCacheHint(wire.cache) };
   }
 
   async getPrompt(name: string, args: Record<string, string>): Promise<GetPromptResult> {
@@ -364,7 +396,8 @@ export class V2Transport {
         this._timeoutMs,
       );
       const options: CallOptions = { signal };
-      if (this._opts.token) options.metadata = buildMetadata(this._opts);
+      const metadata = this._callMetadata(false);
+      if (metadata) options.metadata = metadata;
 
       void (async () => {
         try {
