@@ -184,6 +184,7 @@ export class RapidMCP {
       toolManager: this._toolManager,
       resourceManager: this._resourceManager,
       promptManager: this._promptManager,
+      middlewares: this._middlewares,
       pageSize: this._pageSize,
     });
 

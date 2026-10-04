@@ -1,8 +1,10 @@
+import { ErrorCode, McpError } from "./errors.js";
+
 export interface ContentResult {
   content: Array<{ type: string; text?: string; data?: Uint8Array; mimeType?: string; uri?: string }>;
 }
 
-function isContentResult(value: unknown): value is ContentResult {
+export function isContentResult(value: unknown): value is ContentResult {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -58,4 +60,22 @@ export function paginate<T>(items: T[], cursorStr: string, pageSize: number | un
   const nextOffset = offset + pageSize;
   const nextCursor = nextOffset < items.length ? String(nextOffset) : "";
   return [page, nextCursor];
+}
+
+/** Decode a call's JSON arguments. Anything but a JSON object is InvalidParams. */
+export function parseToolArguments(name: string, text: string): Record<string, unknown> {
+  if (!text) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new McpError(ErrorCode.InvalidParams, `Invalid arguments for tool '${name}': not valid JSON`);
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new McpError(
+      ErrorCode.InvalidParams,
+      `Invalid arguments for tool '${name}': expected a JSON object`,
+    );
+  }
+  return parsed as Record<string, unknown>;
 }

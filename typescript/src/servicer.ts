@@ -18,7 +18,7 @@ import {
 import { ErrorCode, McpError } from "./errors.js";
 import { AsyncQueue, PendingRequests } from "./session.js";
 import { Context } from "./context.js";
-import { paginate } from "./_utils.js";
+import { paginate, parseToolArguments } from "./_utils.js";
 import type { ToolManager } from "./tools/tool-manager.js";
 import type { ResourceManager } from "./resources/resource-manager.js";
 import type { PromptManager } from "./prompts/prompt-manager.js";
@@ -408,25 +408,7 @@ export class McpServicer implements McpServiceImplementation {
     signal: AbortSignal,
   ): Promise<void> {
     try {
-      let args: Record<string, unknown> = {};
-      if (argsJson) {
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(argsJson);
-        } catch {
-          throw new McpError(
-            ErrorCode.InvalidParams,
-            `Invalid arguments for tool '${name}': not valid JSON`,
-          );
-        }
-        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-          throw new McpError(
-            ErrorCode.InvalidParams,
-            `Invalid arguments for tool '${name}': expected a JSON object`,
-          );
-        }
-        args = parsed as Record<string, unknown>;
-      }
+      const args = parseToolArguments(name, argsJson);
 
       const tool = this._toolManager.getTool(name);
       if (!tool) {

@@ -9,6 +9,12 @@ import type { CallContext } from "nice-grpc-common";
 import {
   CacheScope,
   type CacheHint,
+  type CallToolEvent,
+  type CallToolRequest,
+  type GetPromptEvent,
+  type GetPromptRequest,
+  type ReadResourceEvent,
+  type ReadResourceRequest,
   type CompleteRequest,
   type CompleteResult,
   type DeepPartial,
@@ -26,7 +32,10 @@ import {
   type RequestMeta,
   type ResultMeta,
 } from "../../generated/mcp_v2.js";
-import { paginate } from "../_utils.js";
+import { paginate, parseToolArguments } from "../_utils.js";
+import { Middleware, type CallToolResult, type ToolCallContext } from "../middleware.js";
+import { AsyncQueue } from "../session.js";
+import { LOG_LEVELS, V2Context } from "./context.js";
 import { ErrorCode, McpError } from "../errors.js";
 import type { PromptManager } from "../prompts/prompt-manager.js";
 import type { ResourceManager } from "../resources/resource-manager.js";
@@ -41,6 +50,7 @@ export interface McpV2ServicerOptions {
   toolManager: ToolManager;
   resourceManager: ResourceManager;
   promptManager: PromptManager;
+  middlewares: Middleware[];
   pageSize?: number;
 }
 
@@ -70,6 +80,12 @@ export class McpV2Servicer implements McpServiceImplementation {
           supported: SUPPORTED_VERSIONS,
           requested: meta.protocolVersion,
         }),
+        context.trailer,
+      );
+    }
+    if (meta.logLevel !== undefined && !LOG_LEVELS.includes(meta.logLevel)) {
+      throw toServerError(
+        new McpError(ErrorCode.InvalidParams, `Unknown log level '${meta.logLevel}'`),
         context.trailer,
       );
     }
@@ -194,5 +210,124 @@ export class McpV2Servicer implements McpServiceImplementation {
         context.trailer,
       );
     }
+  }
+
+  /** A deliberate McpError goes out as it is; anything else becomes *fallback* and is logged. */
+  private _failure(err: unknown, fallback: string, context: CallContext) {
+    if (err instanceof McpError) return toServerError(err, context.trailer);
+    console.error(`[rapidmcp] ${fallback}:`, err);
+    return toServerError(new McpError(ErrorCode.InternalError, fallback), context.trailer);
+  }
+
+  private async _runTool(name: string, argumentsText: string, ctx: V2Context): Promise<CallToolResult> {
+    const args = parseToolArguments(name, argumentsText);
+    const tool = this._opts.toolManager.getTool(name);
+    if (!tool) throw new McpError(ErrorCode.InvalidParams, `Tool '${name}' not found`);
+
+    let inputSchema: Record<string, unknown> | null = null;
+    if (tool.inputSchema && tool.inputSchema !== "{}") {
+      try {
+        inputSchema = JSON.parse(tool.inputSchema) as Record<string, unknown>;
+      } catch {
+        // A schema that does not parse is simply not offered to middleware.
+      }
+    }
+    const base = (toolCtx: ToolCallContext) =>
+      this._opts.toolManager.callTool(toolCtx.toolName, toolCtx.arguments, toolCtx.ctx);
+    const chain = Middleware.buildChain(this._opts.middlewares, base);
+    return chain({ toolName: name, arguments: args, ctx, inputSchema });
+  }
+
+  async *callTool(
+    request: CallToolRequest,
+    context: CallContext,
+  ): AsyncGenerator<DeepPartial<CallToolEvent>> {
+    this._checkMeta(request.meta, context);
+    const name = request.name;
+
+    // Events the tool emits and the "stop reading" marker share one queue, so
+    // everything emitted before the tool settles is delivered before its result.
+    const DONE = Symbol("done");
+    const queue = new AsyncQueue<DeepPartial<CallToolEvent> | typeof DONE>();
+    const ctx = new V2Context(request.meta!, (event) => queue.enqueue(event), context.signal);
+    const stop = () => queue.enqueue(DONE);
+    context.signal.addEventListener("abort", stop, { once: true });
+
+    const outcome = this._runTool(name, request.arguments, ctx).then(
+      (result) => ({ result }),
+      (error: unknown) => ({ error }),
+    );
+    void outcome.then(stop);
+
+    try {
+      for (;;) {
+        const item = await queue.dequeue();
+        if (item === DONE) break;
+        yield item;
+      }
+    } finally {
+      context.signal.removeEventListener("abort", stop);
+    }
+    // Cancelled, or past its deadline: nobody is waiting for a result.
+    if (context.signal.aborted) return;
+
+    const settled = await outcome;
+    if ("error" in settled) throw this._failure(settled.error, `Tool call '${name}' failed`, context);
+    const { content, isError, structuredContent } = settled.result;
+    yield {
+      event: {
+        $case: "complete",
+        complete: {
+          meta: this._resultMeta(),
+          content,
+          isError,
+          structuredContent: structuredContent === undefined ? "" : JSON.stringify(structuredContent),
+        },
+      },
+    };
+  }
+
+  async *readResource(
+    request: ReadResourceRequest,
+    context: CallContext,
+  ): AsyncGenerator<DeepPartial<ReadResourceEvent>> {
+    this._checkMeta(request.meta, context);
+    let content;
+    try {
+      content = await this._opts.resourceManager.readResource(request.uri);
+    } catch (err) {
+      throw this._failure(err, `Resource handler for '${request.uri}' failed`, context);
+    }
+    yield { event: { $case: "complete", complete: { meta: this._resultMeta(), content, cache: NO_CACHE } } };
+  }
+
+  async *getPrompt(
+    request: GetPromptRequest,
+    context: CallContext,
+  ): AsyncGenerator<DeepPartial<GetPromptEvent>> {
+    this._checkMeta(request.meta, context);
+    const name = request.name;
+    const prompt = this._opts.promptManager.listPrompts().find((p) => p.name === name);
+    if (prompt) {
+      const missing = prompt.arguments
+        .filter((a) => a.required && !(a.name in request.arguments))
+        .map((a) => a.name);
+      if (missing.length > 0) {
+        throw toServerError(
+          new McpError(
+            ErrorCode.InvalidParams,
+            `Missing required argument(s) for prompt '${name}': ${missing.join(", ")}`,
+          ),
+          context.trailer,
+        );
+      }
+    }
+    let messages;
+    try {
+      messages = await this._opts.promptManager.getPrompt(name, request.arguments);
+    } catch (err) {
+      throw this._failure(err, `Prompt handler '${name}' failed`, context);
+    }
+    yield { event: { $case: "complete", complete: { meta: this._resultMeta(), messages } } };
   }
 }

@@ -1,6 +1,8 @@
 export interface CallToolResult {
   content: Array<{ type: string; text: string; data: Uint8Array; mimeType: string; uri: string }>;
   isError: boolean;
+  /** The tool's result when it was a JSON object; carried to v2 clients as structured content. */
+  structuredContent?: unknown;
 }
 
 export interface ToolCallContext {

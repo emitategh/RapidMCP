@@ -1,5 +1,5 @@
 import type { ToolConfig, RegisteredTool } from "./tool.js";
-import { toContentItems } from "../_utils.js";
+import { isContentResult, toContentItems } from "../_utils.js";
 import { ErrorCode, McpError, ToolError } from "../errors.js";
 import type { CallToolResult } from "../middleware.js";
 import { toJSONSchema, type ZodType } from "zod";
@@ -75,7 +75,12 @@ export class ToolManager {
 
     try {
       const result = await tool.handler(validatedArgs, ctx);
-      return { content: toContentItems(result), isError: false };
+      const isObject = typeof result === "object" && result !== null && !Array.isArray(result);
+      return {
+        content: toContentItems(result),
+        isError: false,
+        structuredContent: isObject && !isContentResult(result) ? result : undefined,
+      };
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       let message: string;
