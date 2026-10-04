@@ -333,3 +333,238 @@ class CompleteResult(_message.Message):
     has_more: bool
     total: int
     def __init__(self, meta: _Optional[_Union[ResultMeta, _Mapping]] = ..., values: _Optional[_Iterable[str]] = ..., has_more: bool = ..., total: _Optional[int] = ...) -> None: ...
+
+class ContentItem(_message.Message):
+    __slots__ = ("type", "text", "data", "mime_type", "uri")
+    TYPE_FIELD_NUMBER: _ClassVar[int]
+    TEXT_FIELD_NUMBER: _ClassVar[int]
+    DATA_FIELD_NUMBER: _ClassVar[int]
+    MIME_TYPE_FIELD_NUMBER: _ClassVar[int]
+    URI_FIELD_NUMBER: _ClassVar[int]
+    type: str
+    text: str
+    data: bytes
+    mime_type: str
+    uri: str
+    def __init__(self, type: _Optional[str] = ..., text: _Optional[str] = ..., data: _Optional[bytes] = ..., mime_type: _Optional[str] = ..., uri: _Optional[str] = ...) -> None: ...
+
+class Progress(_message.Message):
+    __slots__ = ("token", "progress", "total", "message")
+    TOKEN_FIELD_NUMBER: _ClassVar[int]
+    PROGRESS_FIELD_NUMBER: _ClassVar[int]
+    TOTAL_FIELD_NUMBER: _ClassVar[int]
+    MESSAGE_FIELD_NUMBER: _ClassVar[int]
+    token: str
+    progress: float
+    total: float
+    message: str
+    def __init__(self, token: _Optional[str] = ..., progress: _Optional[float] = ..., total: _Optional[float] = ..., message: _Optional[str] = ...) -> None: ...
+
+class LogMessage(_message.Message):
+    __slots__ = ("level", "logger", "data")
+    LEVEL_FIELD_NUMBER: _ClassVar[int]
+    LOGGER_FIELD_NUMBER: _ClassVar[int]
+    DATA_FIELD_NUMBER: _ClassVar[int]
+    level: str
+    logger: str
+    data: str
+    def __init__(self, level: _Optional[str] = ..., logger: _Optional[str] = ..., data: _Optional[str] = ...) -> None: ...
+
+class ElicitForm(_message.Message):
+    __slots__ = ("requested_schema",)
+    REQUESTED_SCHEMA_FIELD_NUMBER: _ClassVar[int]
+    requested_schema: str
+    def __init__(self, requested_schema: _Optional[str] = ...) -> None: ...
+
+class ElicitUrl(_message.Message):
+    __slots__ = ("url",)
+    URL_FIELD_NUMBER: _ClassVar[int]
+    url: str
+    def __init__(self, url: _Optional[str] = ...) -> None: ...
+
+class ElicitRequest(_message.Message):
+    __slots__ = ("message", "form", "url")
+    MESSAGE_FIELD_NUMBER: _ClassVar[int]
+    FORM_FIELD_NUMBER: _ClassVar[int]
+    URL_FIELD_NUMBER: _ClassVar[int]
+    message: str
+    form: ElicitForm
+    url: ElicitUrl
+    def __init__(self, message: _Optional[str] = ..., form: _Optional[_Union[ElicitForm, _Mapping]] = ..., url: _Optional[_Union[ElicitUrl, _Mapping]] = ...) -> None: ...
+
+class ElicitResult(_message.Message):
+    __slots__ = ("action", "content")
+    ACTION_FIELD_NUMBER: _ClassVar[int]
+    CONTENT_FIELD_NUMBER: _ClassVar[int]
+    action: str
+    content: str
+    def __init__(self, action: _Optional[str] = ..., content: _Optional[str] = ...) -> None: ...
+
+class InputRequest(_message.Message):
+    __slots__ = ("elicit",)
+    ELICIT_FIELD_NUMBER: _ClassVar[int]
+    elicit: ElicitRequest
+    def __init__(self, elicit: _Optional[_Union[ElicitRequest, _Mapping]] = ...) -> None: ...
+
+class InputResponse(_message.Message):
+    __slots__ = ("elicit",)
+    ELICIT_FIELD_NUMBER: _ClassVar[int]
+    elicit: ElicitResult
+    def __init__(self, elicit: _Optional[_Union[ElicitResult, _Mapping]] = ...) -> None: ...
+
+class InputRequired(_message.Message):
+    __slots__ = ("input_requests", "request_state")
+    class InputRequestsEntry(_message.Message):
+        __slots__ = ("key", "value")
+        KEY_FIELD_NUMBER: _ClassVar[int]
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        key: str
+        value: InputRequest
+        def __init__(self, key: _Optional[str] = ..., value: _Optional[_Union[InputRequest, _Mapping]] = ...) -> None: ...
+    INPUT_REQUESTS_FIELD_NUMBER: _ClassVar[int]
+    REQUEST_STATE_FIELD_NUMBER: _ClassVar[int]
+    input_requests: _containers.MessageMap[str, InputRequest]
+    request_state: bytes
+    def __init__(self, input_requests: _Optional[_Mapping[str, InputRequest]] = ..., request_state: _Optional[bytes] = ...) -> None: ...
+
+class CallToolRequest(_message.Message):
+    __slots__ = ("meta", "name", "arguments", "input_responses", "request_state")
+    class InputResponsesEntry(_message.Message):
+        __slots__ = ("key", "value")
+        KEY_FIELD_NUMBER: _ClassVar[int]
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        key: str
+        value: InputResponse
+        def __init__(self, key: _Optional[str] = ..., value: _Optional[_Union[InputResponse, _Mapping]] = ...) -> None: ...
+    META_FIELD_NUMBER: _ClassVar[int]
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    ARGUMENTS_FIELD_NUMBER: _ClassVar[int]
+    INPUT_RESPONSES_FIELD_NUMBER: _ClassVar[int]
+    REQUEST_STATE_FIELD_NUMBER: _ClassVar[int]
+    meta: RequestMeta
+    name: str
+    arguments: str
+    input_responses: _containers.MessageMap[str, InputResponse]
+    request_state: bytes
+    def __init__(self, meta: _Optional[_Union[RequestMeta, _Mapping]] = ..., name: _Optional[str] = ..., arguments: _Optional[str] = ..., input_responses: _Optional[_Mapping[str, InputResponse]] = ..., request_state: _Optional[bytes] = ...) -> None: ...
+
+class CallToolResult(_message.Message):
+    __slots__ = ("meta", "content", "is_error", "structured_content")
+    META_FIELD_NUMBER: _ClassVar[int]
+    CONTENT_FIELD_NUMBER: _ClassVar[int]
+    IS_ERROR_FIELD_NUMBER: _ClassVar[int]
+    STRUCTURED_CONTENT_FIELD_NUMBER: _ClassVar[int]
+    meta: ResultMeta
+    content: _containers.RepeatedCompositeFieldContainer[ContentItem]
+    is_error: bool
+    structured_content: str
+    def __init__(self, meta: _Optional[_Union[ResultMeta, _Mapping]] = ..., content: _Optional[_Iterable[_Union[ContentItem, _Mapping]]] = ..., is_error: bool = ..., structured_content: _Optional[str] = ...) -> None: ...
+
+class CallToolEvent(_message.Message):
+    __slots__ = ("progress", "log", "complete", "input_required")
+    PROGRESS_FIELD_NUMBER: _ClassVar[int]
+    LOG_FIELD_NUMBER: _ClassVar[int]
+    COMPLETE_FIELD_NUMBER: _ClassVar[int]
+    INPUT_REQUIRED_FIELD_NUMBER: _ClassVar[int]
+    progress: Progress
+    log: LogMessage
+    complete: CallToolResult
+    input_required: InputRequired
+    def __init__(self, progress: _Optional[_Union[Progress, _Mapping]] = ..., log: _Optional[_Union[LogMessage, _Mapping]] = ..., complete: _Optional[_Union[CallToolResult, _Mapping]] = ..., input_required: _Optional[_Union[InputRequired, _Mapping]] = ...) -> None: ...
+
+class ReadResourceRequest(_message.Message):
+    __slots__ = ("meta", "uri", "input_responses", "request_state")
+    class InputResponsesEntry(_message.Message):
+        __slots__ = ("key", "value")
+        KEY_FIELD_NUMBER: _ClassVar[int]
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        key: str
+        value: InputResponse
+        def __init__(self, key: _Optional[str] = ..., value: _Optional[_Union[InputResponse, _Mapping]] = ...) -> None: ...
+    META_FIELD_NUMBER: _ClassVar[int]
+    URI_FIELD_NUMBER: _ClassVar[int]
+    INPUT_RESPONSES_FIELD_NUMBER: _ClassVar[int]
+    REQUEST_STATE_FIELD_NUMBER: _ClassVar[int]
+    meta: RequestMeta
+    uri: str
+    input_responses: _containers.MessageMap[str, InputResponse]
+    request_state: bytes
+    def __init__(self, meta: _Optional[_Union[RequestMeta, _Mapping]] = ..., uri: _Optional[str] = ..., input_responses: _Optional[_Mapping[str, InputResponse]] = ..., request_state: _Optional[bytes] = ...) -> None: ...
+
+class ReadResourceResult(_message.Message):
+    __slots__ = ("meta", "content", "cache")
+    META_FIELD_NUMBER: _ClassVar[int]
+    CONTENT_FIELD_NUMBER: _ClassVar[int]
+    CACHE_FIELD_NUMBER: _ClassVar[int]
+    meta: ResultMeta
+    content: _containers.RepeatedCompositeFieldContainer[ContentItem]
+    cache: CacheHint
+    def __init__(self, meta: _Optional[_Union[ResultMeta, _Mapping]] = ..., content: _Optional[_Iterable[_Union[ContentItem, _Mapping]]] = ..., cache: _Optional[_Union[CacheHint, _Mapping]] = ...) -> None: ...
+
+class ReadResourceEvent(_message.Message):
+    __slots__ = ("progress", "log", "complete", "input_required")
+    PROGRESS_FIELD_NUMBER: _ClassVar[int]
+    LOG_FIELD_NUMBER: _ClassVar[int]
+    COMPLETE_FIELD_NUMBER: _ClassVar[int]
+    INPUT_REQUIRED_FIELD_NUMBER: _ClassVar[int]
+    progress: Progress
+    log: LogMessage
+    complete: ReadResourceResult
+    input_required: InputRequired
+    def __init__(self, progress: _Optional[_Union[Progress, _Mapping]] = ..., log: _Optional[_Union[LogMessage, _Mapping]] = ..., complete: _Optional[_Union[ReadResourceResult, _Mapping]] = ..., input_required: _Optional[_Union[InputRequired, _Mapping]] = ...) -> None: ...
+
+class GetPromptRequest(_message.Message):
+    __slots__ = ("meta", "name", "arguments", "input_responses", "request_state")
+    class ArgumentsEntry(_message.Message):
+        __slots__ = ("key", "value")
+        KEY_FIELD_NUMBER: _ClassVar[int]
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        key: str
+        value: str
+        def __init__(self, key: _Optional[str] = ..., value: _Optional[str] = ...) -> None: ...
+    class InputResponsesEntry(_message.Message):
+        __slots__ = ("key", "value")
+        KEY_FIELD_NUMBER: _ClassVar[int]
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        key: str
+        value: InputResponse
+        def __init__(self, key: _Optional[str] = ..., value: _Optional[_Union[InputResponse, _Mapping]] = ...) -> None: ...
+    META_FIELD_NUMBER: _ClassVar[int]
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    ARGUMENTS_FIELD_NUMBER: _ClassVar[int]
+    INPUT_RESPONSES_FIELD_NUMBER: _ClassVar[int]
+    REQUEST_STATE_FIELD_NUMBER: _ClassVar[int]
+    meta: RequestMeta
+    name: str
+    arguments: _containers.ScalarMap[str, str]
+    input_responses: _containers.MessageMap[str, InputResponse]
+    request_state: bytes
+    def __init__(self, meta: _Optional[_Union[RequestMeta, _Mapping]] = ..., name: _Optional[str] = ..., arguments: _Optional[_Mapping[str, str]] = ..., input_responses: _Optional[_Mapping[str, InputResponse]] = ..., request_state: _Optional[bytes] = ...) -> None: ...
+
+class PromptMessage(_message.Message):
+    __slots__ = ("role", "content")
+    ROLE_FIELD_NUMBER: _ClassVar[int]
+    CONTENT_FIELD_NUMBER: _ClassVar[int]
+    role: str
+    content: ContentItem
+    def __init__(self, role: _Optional[str] = ..., content: _Optional[_Union[ContentItem, _Mapping]] = ...) -> None: ...
+
+class GetPromptResult(_message.Message):
+    __slots__ = ("meta", "messages")
+    META_FIELD_NUMBER: _ClassVar[int]
+    MESSAGES_FIELD_NUMBER: _ClassVar[int]
+    meta: ResultMeta
+    messages: _containers.RepeatedCompositeFieldContainer[PromptMessage]
+    def __init__(self, meta: _Optional[_Union[ResultMeta, _Mapping]] = ..., messages: _Optional[_Iterable[_Union[PromptMessage, _Mapping]]] = ...) -> None: ...
+
+class GetPromptEvent(_message.Message):
+    __slots__ = ("progress", "log", "complete", "input_required")
+    PROGRESS_FIELD_NUMBER: _ClassVar[int]
+    LOG_FIELD_NUMBER: _ClassVar[int]
+    COMPLETE_FIELD_NUMBER: _ClassVar[int]
+    INPUT_REQUIRED_FIELD_NUMBER: _ClassVar[int]
+    progress: Progress
+    log: LogMessage
+    complete: GetPromptResult
+    input_required: InputRequired
+    def __init__(self, progress: _Optional[_Union[Progress, _Mapping]] = ..., log: _Optional[_Union[LogMessage, _Mapping]] = ..., complete: _Optional[_Union[GetPromptResult, _Mapping]] = ..., input_required: _Optional[_Union[InputRequired, _Mapping]] = ...) -> None: ...

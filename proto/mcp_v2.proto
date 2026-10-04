@@ -11,6 +11,9 @@ service Mcp {
   rpc ListResourceTemplates(ListResourceTemplatesRequest) returns (ListResourceTemplatesResult);
   rpc ListPrompts(ListPromptsRequest) returns (ListPromptsResult);
   rpc Complete(CompleteRequest) returns (CompleteResult);
+  rpc CallTool(CallToolRequest) returns (stream CallToolEvent);
+  rpc ReadResource(ReadResourceRequest) returns (stream ReadResourceEvent);
+  rpc GetPrompt(GetPromptRequest) returns (stream GetPromptEvent);
 }
 
 // ── Per-request / per-result metadata ─────────────────────────────────────
@@ -183,4 +186,144 @@ message CompleteResult {
   repeated string values = 2;
   bool has_more          = 3;
   int32 total            = 4;
+}
+
+// ── Content ───────────────────────────────────────────────────────────────
+
+message ContentItem {
+  string type      = 1;  // "text" | "image" | "audio" | "resource"
+  string text      = 2;
+  bytes  data      = 3;
+  string mime_type = 4;
+  string uri       = 5;
+}
+
+// ── Events a call can emit before its result ──────────────────────────────
+
+// Sent only when the request set meta.progress_token.
+message Progress {
+  string token          = 1;  // echoed from the request
+  double progress       = 2;
+  optional double total = 3;
+  string message        = 4;
+}
+
+// Sent only when the request set meta.log_level, at or above that level.
+message LogMessage {
+  string level  = 1;
+  string logger = 2;
+  string data   = 3;  // JSON text
+}
+
+// ── Asking the client for input (multi round-trip requests) ───────────────
+
+message ElicitForm { string requested_schema = 1; }  // JSON Schema as JSON text
+message ElicitUrl  { string url = 1; }
+
+message ElicitRequest {
+  string message = 1;
+  oneof mode {
+    ElicitForm form = 2;
+    ElicitUrl  url  = 3;
+  }
+}
+
+message ElicitResult {
+  string action  = 1;  // "accept" | "decline" | "cancel"
+  string content = 2;  // JSON object text; only for an accepted form
+}
+
+message InputRequest {
+  reserved 2, 3;  // sampling, roots
+  oneof request { ElicitRequest elicit = 1; }
+}
+
+message InputResponse {
+  reserved 2, 3;  // sampling, roots
+  oneof response { ElicitResult elicit = 1; }
+}
+
+message InputRequired {
+  map<string, InputRequest> input_requests = 1;  // keys chosen by the server
+  bytes request_state = 2;                        // opaque to the client
+}
+
+// ── Tool calls ────────────────────────────────────────────────────────────
+
+message CallToolRequest {
+  RequestMeta meta = 1;
+  string name      = 2;
+  string arguments = 3;  // JSON object text
+  map<string, InputResponse> input_responses = 4;  // retry only
+  bytes request_state = 5;                          // retry only, echoed unchanged
+}
+
+message CallToolResult {
+  ResultMeta meta              = 1;
+  repeated ContentItem content = 2;
+  bool is_error                = 3;
+  string structured_content    = 4;  // JSON text, empty = none
+}
+
+// The oneof case is the standard's resultType: `complete` or `input_required`.
+message CallToolEvent {
+  oneof event {
+    Progress       progress       = 1;
+    LogMessage     log            = 2;
+    CallToolResult complete       = 3;
+    InputRequired  input_required = 4;
+  }
+}
+
+// ── Resource reads ────────────────────────────────────────────────────────
+
+message ReadResourceRequest {
+  RequestMeta meta = 1;
+  string uri       = 2;
+  map<string, InputResponse> input_responses = 3;
+  bytes request_state = 4;
+}
+
+message ReadResourceResult {
+  ResultMeta meta              = 1;
+  repeated ContentItem content = 2;
+  CacheHint cache              = 3;
+}
+
+message ReadResourceEvent {
+  oneof event {
+    Progress           progress       = 1;
+    LogMessage         log            = 2;
+    ReadResourceResult complete       = 3;
+    InputRequired      input_required = 4;
+  }
+}
+
+// ── Prompts ───────────────────────────────────────────────────────────────
+
+message GetPromptRequest {
+  RequestMeta meta = 1;
+  string name      = 2;
+  map<string, string> arguments = 3;
+  map<string, InputResponse> input_responses = 4;
+  bytes request_state = 5;
+}
+
+message PromptMessage {
+  string role         = 1;
+  ContentItem content = 2;
+}
+
+message GetPromptResult {
+  ResultMeta meta                 = 1;
+  repeated PromptMessage messages = 2;
+}
+
+message GetPromptEvent {
+  oneof event {
+    Progress        progress       = 1;
+    LogMessage      log            = 2;
+    GetPromptResult complete       = 3;
+    InputRequired   input_required = 4;
+  }
 }

@@ -264,6 +264,170 @@ export interface CompleteResult {
   total: number;
 }
 
+export interface ContentItem {
+  /** "text" | "image" | "audio" | "resource" */
+  type: string;
+  text: string;
+  data: Uint8Array;
+  mimeType: string;
+  uri: string;
+}
+
+/** Sent only when the request set meta.progress_token. */
+export interface Progress {
+  /** echoed from the request */
+  token: string;
+  progress: number;
+  total?: number | undefined;
+  message: string;
+}
+
+/** Sent only when the request set meta.log_level, at or above that level. */
+export interface LogMessage {
+  level: string;
+  logger: string;
+  /** JSON text */
+  data: string;
+}
+
+export interface ElicitForm {
+  requestedSchema: string;
+}
+
+export interface ElicitUrl {
+  url: string;
+}
+
+export interface ElicitRequest {
+  message: string;
+  mode: { $case: "form"; form: ElicitForm } | { $case: "url"; url: ElicitUrl } | undefined;
+}
+
+export interface ElicitResult {
+  /** "accept" | "decline" | "cancel" */
+  action: string;
+  /** JSON object text; only for an accepted form */
+  content: string;
+}
+
+export interface InputRequest {
+  request: { $case: "elicit"; elicit: ElicitRequest } | undefined;
+}
+
+export interface InputResponse {
+  response: { $case: "elicit"; elicit: ElicitResult } | undefined;
+}
+
+export interface InputRequired {
+  /** keys chosen by the server */
+  inputRequests: { [key: string]: InputRequest };
+  /** opaque to the client */
+  requestState: Uint8Array;
+}
+
+export interface InputRequired_InputRequestsEntry {
+  key: string;
+  value: InputRequest | undefined;
+}
+
+export interface CallToolRequest {
+  meta: RequestMeta | undefined;
+  name: string;
+  /** JSON object text */
+  arguments: string;
+  /** retry only */
+  inputResponses: { [key: string]: InputResponse };
+  /** retry only, echoed unchanged */
+  requestState: Uint8Array;
+}
+
+export interface CallToolRequest_InputResponsesEntry {
+  key: string;
+  value: InputResponse | undefined;
+}
+
+export interface CallToolResult {
+  meta: ResultMeta | undefined;
+  content: ContentItem[];
+  isError: boolean;
+  /** JSON text, empty = none */
+  structuredContent: string;
+}
+
+/** The oneof case is the standard's resultType: `complete` or `input_required`. */
+export interface CallToolEvent {
+  event:
+    | { $case: "progress"; progress: Progress }
+    | { $case: "log"; log: LogMessage }
+    | { $case: "complete"; complete: CallToolResult }
+    | { $case: "inputRequired"; inputRequired: InputRequired }
+    | undefined;
+}
+
+export interface ReadResourceRequest {
+  meta: RequestMeta | undefined;
+  uri: string;
+  inputResponses: { [key: string]: InputResponse };
+  requestState: Uint8Array;
+}
+
+export interface ReadResourceRequest_InputResponsesEntry {
+  key: string;
+  value: InputResponse | undefined;
+}
+
+export interface ReadResourceResult {
+  meta: ResultMeta | undefined;
+  content: ContentItem[];
+  cache: CacheHint | undefined;
+}
+
+export interface ReadResourceEvent {
+  event:
+    | { $case: "progress"; progress: Progress }
+    | { $case: "log"; log: LogMessage }
+    | { $case: "complete"; complete: ReadResourceResult }
+    | { $case: "inputRequired"; inputRequired: InputRequired }
+    | undefined;
+}
+
+export interface GetPromptRequest {
+  meta: RequestMeta | undefined;
+  name: string;
+  arguments: { [key: string]: string };
+  inputResponses: { [key: string]: InputResponse };
+  requestState: Uint8Array;
+}
+
+export interface GetPromptRequest_ArgumentsEntry {
+  key: string;
+  value: string;
+}
+
+export interface GetPromptRequest_InputResponsesEntry {
+  key: string;
+  value: InputResponse | undefined;
+}
+
+export interface PromptMessage {
+  role: string;
+  content: ContentItem | undefined;
+}
+
+export interface GetPromptResult {
+  meta: ResultMeta | undefined;
+  messages: PromptMessage[];
+}
+
+export interface GetPromptEvent {
+  event:
+    | { $case: "progress"; progress: Progress }
+    | { $case: "log"; log: LogMessage }
+    | { $case: "complete"; complete: GetPromptResult }
+    | { $case: "inputRequired"; inputRequired: InputRequired }
+    | undefined;
+}
+
 function createBaseImplementation(): Implementation {
   return { name: "", version: "" };
 }
@@ -3475,6 +3639,2578 @@ export const CompleteResult: MessageFns<CompleteResult> = {
   },
 };
 
+function createBaseContentItem(): ContentItem {
+  return { type: "", text: "", data: new Uint8Array(0), mimeType: "", uri: "" };
+}
+
+export const ContentItem: MessageFns<ContentItem> = {
+  encode(message: ContentItem, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.type !== "") {
+      writer.uint32(10).string(message.type);
+    }
+    if (message.text !== "") {
+      writer.uint32(18).string(message.text);
+    }
+    if (message.data.length !== 0) {
+      writer.uint32(26).bytes(message.data);
+    }
+    if (message.mimeType !== "") {
+      writer.uint32(34).string(message.mimeType);
+    }
+    if (message.uri !== "") {
+      writer.uint32(42).string(message.uri);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ContentItem {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseContentItem();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.type = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.text = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.data = reader.bytes();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.mimeType = reader.string();
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.uri = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ContentItem {
+    return {
+      type: isSet(object.type) ? globalThis.String(object.type) : "",
+      text: isSet(object.text) ? globalThis.String(object.text) : "",
+      data: isSet(object.data) ? bytesFromBase64(object.data) : new Uint8Array(0),
+      mimeType: isSet(object.mimeType)
+        ? globalThis.String(object.mimeType)
+        : isSet(object.mime_type)
+        ? globalThis.String(object.mime_type)
+        : "",
+      uri: isSet(object.uri) ? globalThis.String(object.uri) : "",
+    };
+  },
+
+  toJSON(message: ContentItem): unknown {
+    const obj: any = {};
+    if (message.type !== "") {
+      obj.type = message.type;
+    }
+    if (message.text !== "") {
+      obj.text = message.text;
+    }
+    if (message.data.length !== 0) {
+      obj.data = base64FromBytes(message.data);
+    }
+    if (message.mimeType !== "") {
+      obj.mimeType = message.mimeType;
+    }
+    if (message.uri !== "") {
+      obj.uri = message.uri;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ContentItem>, I>>(base?: I): ContentItem {
+    return ContentItem.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ContentItem>, I>>(object: I): ContentItem {
+    const message = createBaseContentItem();
+    message.type = object.type ?? "";
+    message.text = object.text ?? "";
+    message.data = object.data ?? new Uint8Array(0);
+    message.mimeType = object.mimeType ?? "";
+    message.uri = object.uri ?? "";
+    return message;
+  },
+};
+
+function createBaseProgress(): Progress {
+  return { token: "", progress: 0, total: undefined, message: "" };
+}
+
+export const Progress: MessageFns<Progress> = {
+  encode(message: Progress, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.token !== "") {
+      writer.uint32(10).string(message.token);
+    }
+    if (message.progress !== 0) {
+      writer.uint32(17).double(message.progress);
+    }
+    if (message.total !== undefined) {
+      writer.uint32(25).double(message.total);
+    }
+    if (message.message !== "") {
+      writer.uint32(34).string(message.message);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): Progress {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseProgress();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.token = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 17) {
+            break;
+          }
+
+          message.progress = reader.double();
+          continue;
+        }
+        case 3: {
+          if (tag !== 25) {
+            break;
+          }
+
+          message.total = reader.double();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.message = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): Progress {
+    return {
+      token: isSet(object.token) ? globalThis.String(object.token) : "",
+      progress: isSet(object.progress) ? globalThis.Number(object.progress) : 0,
+      total: isSet(object.total) ? globalThis.Number(object.total) : undefined,
+      message: isSet(object.message) ? globalThis.String(object.message) : "",
+    };
+  },
+
+  toJSON(message: Progress): unknown {
+    const obj: any = {};
+    if (message.token !== "") {
+      obj.token = message.token;
+    }
+    if (message.progress !== 0) {
+      obj.progress = message.progress;
+    }
+    if (message.total !== undefined) {
+      obj.total = message.total;
+    }
+    if (message.message !== "") {
+      obj.message = message.message;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<Progress>, I>>(base?: I): Progress {
+    return Progress.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<Progress>, I>>(object: I): Progress {
+    const message = createBaseProgress();
+    message.token = object.token ?? "";
+    message.progress = object.progress ?? 0;
+    message.total = object.total ?? undefined;
+    message.message = object.message ?? "";
+    return message;
+  },
+};
+
+function createBaseLogMessage(): LogMessage {
+  return { level: "", logger: "", data: "" };
+}
+
+export const LogMessage: MessageFns<LogMessage> = {
+  encode(message: LogMessage, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.level !== "") {
+      writer.uint32(10).string(message.level);
+    }
+    if (message.logger !== "") {
+      writer.uint32(18).string(message.logger);
+    }
+    if (message.data !== "") {
+      writer.uint32(26).string(message.data);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): LogMessage {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseLogMessage();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.level = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.logger = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.data = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): LogMessage {
+    return {
+      level: isSet(object.level) ? globalThis.String(object.level) : "",
+      logger: isSet(object.logger) ? globalThis.String(object.logger) : "",
+      data: isSet(object.data) ? globalThis.String(object.data) : "",
+    };
+  },
+
+  toJSON(message: LogMessage): unknown {
+    const obj: any = {};
+    if (message.level !== "") {
+      obj.level = message.level;
+    }
+    if (message.logger !== "") {
+      obj.logger = message.logger;
+    }
+    if (message.data !== "") {
+      obj.data = message.data;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<LogMessage>, I>>(base?: I): LogMessage {
+    return LogMessage.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<LogMessage>, I>>(object: I): LogMessage {
+    const message = createBaseLogMessage();
+    message.level = object.level ?? "";
+    message.logger = object.logger ?? "";
+    message.data = object.data ?? "";
+    return message;
+  },
+};
+
+function createBaseElicitForm(): ElicitForm {
+  return { requestedSchema: "" };
+}
+
+export const ElicitForm: MessageFns<ElicitForm> = {
+  encode(message: ElicitForm, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.requestedSchema !== "") {
+      writer.uint32(10).string(message.requestedSchema);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ElicitForm {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseElicitForm();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.requestedSchema = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ElicitForm {
+    return {
+      requestedSchema: isSet(object.requestedSchema)
+        ? globalThis.String(object.requestedSchema)
+        : isSet(object.requested_schema)
+        ? globalThis.String(object.requested_schema)
+        : "",
+    };
+  },
+
+  toJSON(message: ElicitForm): unknown {
+    const obj: any = {};
+    if (message.requestedSchema !== "") {
+      obj.requestedSchema = message.requestedSchema;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ElicitForm>, I>>(base?: I): ElicitForm {
+    return ElicitForm.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ElicitForm>, I>>(object: I): ElicitForm {
+    const message = createBaseElicitForm();
+    message.requestedSchema = object.requestedSchema ?? "";
+    return message;
+  },
+};
+
+function createBaseElicitUrl(): ElicitUrl {
+  return { url: "" };
+}
+
+export const ElicitUrl: MessageFns<ElicitUrl> = {
+  encode(message: ElicitUrl, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.url !== "") {
+      writer.uint32(10).string(message.url);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ElicitUrl {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseElicitUrl();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.url = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ElicitUrl {
+    return { url: isSet(object.url) ? globalThis.String(object.url) : "" };
+  },
+
+  toJSON(message: ElicitUrl): unknown {
+    const obj: any = {};
+    if (message.url !== "") {
+      obj.url = message.url;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ElicitUrl>, I>>(base?: I): ElicitUrl {
+    return ElicitUrl.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ElicitUrl>, I>>(object: I): ElicitUrl {
+    const message = createBaseElicitUrl();
+    message.url = object.url ?? "";
+    return message;
+  },
+};
+
+function createBaseElicitRequest(): ElicitRequest {
+  return { message: "", mode: undefined };
+}
+
+export const ElicitRequest: MessageFns<ElicitRequest> = {
+  encode(message: ElicitRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.message !== "") {
+      writer.uint32(10).string(message.message);
+    }
+    switch (message.mode?.$case) {
+      case "form":
+        ElicitForm.encode(message.mode.form, writer.uint32(18).fork()).join();
+        break;
+      case "url":
+        ElicitUrl.encode(message.mode.url, writer.uint32(26).fork()).join();
+        break;
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ElicitRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseElicitRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.message = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.mode = { $case: "form", form: ElicitForm.decode(reader, reader.uint32()) };
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.mode = { $case: "url", url: ElicitUrl.decode(reader, reader.uint32()) };
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ElicitRequest {
+    return {
+      message: isSet(object.message) ? globalThis.String(object.message) : "",
+      mode: isSet(object.form)
+        ? { $case: "form", form: ElicitForm.fromJSON(object.form) }
+        : isSet(object.url)
+        ? { $case: "url", url: ElicitUrl.fromJSON(object.url) }
+        : undefined,
+    };
+  },
+
+  toJSON(message: ElicitRequest): unknown {
+    const obj: any = {};
+    if (message.message !== "") {
+      obj.message = message.message;
+    }
+    if (message.mode?.$case === "form") {
+      obj.form = ElicitForm.toJSON(message.mode.form);
+    } else if (message.mode?.$case === "url") {
+      obj.url = ElicitUrl.toJSON(message.mode.url);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ElicitRequest>, I>>(base?: I): ElicitRequest {
+    return ElicitRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ElicitRequest>, I>>(object: I): ElicitRequest {
+    const message = createBaseElicitRequest();
+    message.message = object.message ?? "";
+    switch (object.mode?.$case) {
+      case "form": {
+        if (object.mode?.form !== undefined && object.mode?.form !== null) {
+          message.mode = { $case: "form", form: ElicitForm.fromPartial(object.mode.form) };
+        }
+        break;
+      }
+      case "url": {
+        if (object.mode?.url !== undefined && object.mode?.url !== null) {
+          message.mode = { $case: "url", url: ElicitUrl.fromPartial(object.mode.url) };
+        }
+        break;
+      }
+    }
+    return message;
+  },
+};
+
+function createBaseElicitResult(): ElicitResult {
+  return { action: "", content: "" };
+}
+
+export const ElicitResult: MessageFns<ElicitResult> = {
+  encode(message: ElicitResult, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.action !== "") {
+      writer.uint32(10).string(message.action);
+    }
+    if (message.content !== "") {
+      writer.uint32(18).string(message.content);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ElicitResult {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseElicitResult();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.action = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.content = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ElicitResult {
+    return {
+      action: isSet(object.action) ? globalThis.String(object.action) : "",
+      content: isSet(object.content) ? globalThis.String(object.content) : "",
+    };
+  },
+
+  toJSON(message: ElicitResult): unknown {
+    const obj: any = {};
+    if (message.action !== "") {
+      obj.action = message.action;
+    }
+    if (message.content !== "") {
+      obj.content = message.content;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ElicitResult>, I>>(base?: I): ElicitResult {
+    return ElicitResult.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ElicitResult>, I>>(object: I): ElicitResult {
+    const message = createBaseElicitResult();
+    message.action = object.action ?? "";
+    message.content = object.content ?? "";
+    return message;
+  },
+};
+
+function createBaseInputRequest(): InputRequest {
+  return { request: undefined };
+}
+
+export const InputRequest: MessageFns<InputRequest> = {
+  encode(message: InputRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    switch (message.request?.$case) {
+      case "elicit":
+        ElicitRequest.encode(message.request.elicit, writer.uint32(10).fork()).join();
+        break;
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): InputRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseInputRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.request = { $case: "elicit", elicit: ElicitRequest.decode(reader, reader.uint32()) };
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): InputRequest {
+    return {
+      request: isSet(object.elicit) ? { $case: "elicit", elicit: ElicitRequest.fromJSON(object.elicit) } : undefined,
+    };
+  },
+
+  toJSON(message: InputRequest): unknown {
+    const obj: any = {};
+    if (message.request?.$case === "elicit") {
+      obj.elicit = ElicitRequest.toJSON(message.request.elicit);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<InputRequest>, I>>(base?: I): InputRequest {
+    return InputRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<InputRequest>, I>>(object: I): InputRequest {
+    const message = createBaseInputRequest();
+    switch (object.request?.$case) {
+      case "elicit": {
+        if (object.request?.elicit !== undefined && object.request?.elicit !== null) {
+          message.request = { $case: "elicit", elicit: ElicitRequest.fromPartial(object.request.elicit) };
+        }
+        break;
+      }
+    }
+    return message;
+  },
+};
+
+function createBaseInputResponse(): InputResponse {
+  return { response: undefined };
+}
+
+export const InputResponse: MessageFns<InputResponse> = {
+  encode(message: InputResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    switch (message.response?.$case) {
+      case "elicit":
+        ElicitResult.encode(message.response.elicit, writer.uint32(10).fork()).join();
+        break;
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): InputResponse {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseInputResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.response = { $case: "elicit", elicit: ElicitResult.decode(reader, reader.uint32()) };
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): InputResponse {
+    return {
+      response: isSet(object.elicit) ? { $case: "elicit", elicit: ElicitResult.fromJSON(object.elicit) } : undefined,
+    };
+  },
+
+  toJSON(message: InputResponse): unknown {
+    const obj: any = {};
+    if (message.response?.$case === "elicit") {
+      obj.elicit = ElicitResult.toJSON(message.response.elicit);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<InputResponse>, I>>(base?: I): InputResponse {
+    return InputResponse.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<InputResponse>, I>>(object: I): InputResponse {
+    const message = createBaseInputResponse();
+    switch (object.response?.$case) {
+      case "elicit": {
+        if (object.response?.elicit !== undefined && object.response?.elicit !== null) {
+          message.response = { $case: "elicit", elicit: ElicitResult.fromPartial(object.response.elicit) };
+        }
+        break;
+      }
+    }
+    return message;
+  },
+};
+
+function createBaseInputRequired(): InputRequired {
+  return { inputRequests: {}, requestState: new Uint8Array(0) };
+}
+
+export const InputRequired: MessageFns<InputRequired> = {
+  encode(message: InputRequired, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    globalThis.Object.entries(message.inputRequests).forEach(([key, value]: [string, InputRequest]) => {
+      InputRequired_InputRequestsEntry.encode({ key: key as any, value }, writer.uint32(10).fork()).join();
+    });
+    if (message.requestState.length !== 0) {
+      writer.uint32(18).bytes(message.requestState);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): InputRequired {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseInputRequired();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          const entry1 = InputRequired_InputRequestsEntry.decode(reader, reader.uint32());
+          if (entry1.value !== undefined) {
+            message.inputRequests[entry1.key] = entry1.value;
+          }
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.requestState = reader.bytes();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): InputRequired {
+    return {
+      inputRequests: isObject(object.inputRequests)
+        ? (globalThis.Object.entries(object.inputRequests) as [string, any][]).reduce(
+          (acc: { [key: string]: InputRequest }, [key, value]: [string, any]) => {
+            acc[key] = InputRequest.fromJSON(value);
+            return acc;
+          },
+          {},
+        )
+        : isObject(object.input_requests)
+        ? (globalThis.Object.entries(object.input_requests) as [string, any][]).reduce(
+          (acc: { [key: string]: InputRequest }, [key, value]: [string, any]) => {
+            acc[key] = InputRequest.fromJSON(value);
+            return acc;
+          },
+          {},
+        )
+        : {},
+      requestState: isSet(object.requestState)
+        ? bytesFromBase64(object.requestState)
+        : isSet(object.request_state)
+        ? bytesFromBase64(object.request_state)
+        : new Uint8Array(0),
+    };
+  },
+
+  toJSON(message: InputRequired): unknown {
+    const obj: any = {};
+    if (message.inputRequests) {
+      const entries = globalThis.Object.entries(message.inputRequests) as [string, InputRequest][];
+      if (entries.length > 0) {
+        obj.inputRequests = {};
+        entries.forEach(([k, v]) => {
+          obj.inputRequests[k] = InputRequest.toJSON(v);
+        });
+      }
+    }
+    if (message.requestState.length !== 0) {
+      obj.requestState = base64FromBytes(message.requestState);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<InputRequired>, I>>(base?: I): InputRequired {
+    return InputRequired.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<InputRequired>, I>>(object: I): InputRequired {
+    const message = createBaseInputRequired();
+    message.inputRequests = (globalThis.Object.entries(object.inputRequests ?? {}) as [string, InputRequest][]).reduce(
+      (acc: { [key: string]: InputRequest }, [key, value]: [string, InputRequest]) => {
+        if (value !== undefined) {
+          acc[key] = InputRequest.fromPartial(value);
+        }
+        return acc;
+      },
+      {},
+    );
+    message.requestState = object.requestState ?? new Uint8Array(0);
+    return message;
+  },
+};
+
+function createBaseInputRequired_InputRequestsEntry(): InputRequired_InputRequestsEntry {
+  return { key: "", value: undefined };
+}
+
+export const InputRequired_InputRequestsEntry: MessageFns<InputRequired_InputRequestsEntry> = {
+  encode(message: InputRequired_InputRequestsEntry, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.key !== "") {
+      writer.uint32(10).string(message.key);
+    }
+    if (message.value !== undefined) {
+      InputRequest.encode(message.value, writer.uint32(18).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): InputRequired_InputRequestsEntry {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseInputRequired_InputRequestsEntry();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.key = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.value = InputRequest.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): InputRequired_InputRequestsEntry {
+    return {
+      key: isSet(object.key) ? globalThis.String(object.key) : "",
+      value: isSet(object.value) ? InputRequest.fromJSON(object.value) : undefined,
+    };
+  },
+
+  toJSON(message: InputRequired_InputRequestsEntry): unknown {
+    const obj: any = {};
+    if (message.key !== "") {
+      obj.key = message.key;
+    }
+    if (message.value !== undefined) {
+      obj.value = InputRequest.toJSON(message.value);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<InputRequired_InputRequestsEntry>, I>>(
+    base?: I,
+  ): InputRequired_InputRequestsEntry {
+    return InputRequired_InputRequestsEntry.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<InputRequired_InputRequestsEntry>, I>>(
+    object: I,
+  ): InputRequired_InputRequestsEntry {
+    const message = createBaseInputRequired_InputRequestsEntry();
+    message.key = object.key ?? "";
+    message.value = (object.value !== undefined && object.value !== null)
+      ? InputRequest.fromPartial(object.value)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseCallToolRequest(): CallToolRequest {
+  return { meta: undefined, name: "", arguments: "", inputResponses: {}, requestState: new Uint8Array(0) };
+}
+
+export const CallToolRequest: MessageFns<CallToolRequest> = {
+  encode(message: CallToolRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.meta !== undefined) {
+      RequestMeta.encode(message.meta, writer.uint32(10).fork()).join();
+    }
+    if (message.name !== "") {
+      writer.uint32(18).string(message.name);
+    }
+    if (message.arguments !== "") {
+      writer.uint32(26).string(message.arguments);
+    }
+    globalThis.Object.entries(message.inputResponses).forEach(([key, value]: [string, InputResponse]) => {
+      CallToolRequest_InputResponsesEntry.encode({ key: key as any, value }, writer.uint32(34).fork()).join();
+    });
+    if (message.requestState.length !== 0) {
+      writer.uint32(42).bytes(message.requestState);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): CallToolRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseCallToolRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.meta = RequestMeta.decode(reader, reader.uint32());
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.name = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.arguments = reader.string();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          const entry4 = CallToolRequest_InputResponsesEntry.decode(reader, reader.uint32());
+          if (entry4.value !== undefined) {
+            message.inputResponses[entry4.key] = entry4.value;
+          }
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.requestState = reader.bytes();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): CallToolRequest {
+    return {
+      meta: isSet(object.meta) ? RequestMeta.fromJSON(object.meta) : undefined,
+      name: isSet(object.name) ? globalThis.String(object.name) : "",
+      arguments: isSet(object.arguments) ? globalThis.String(object.arguments) : "",
+      inputResponses: isObject(object.inputResponses)
+        ? (globalThis.Object.entries(object.inputResponses) as [string, any][]).reduce(
+          (acc: { [key: string]: InputResponse }, [key, value]: [string, any]) => {
+            acc[key] = InputResponse.fromJSON(value);
+            return acc;
+          },
+          {},
+        )
+        : isObject(object.input_responses)
+        ? (globalThis.Object.entries(object.input_responses) as [string, any][]).reduce(
+          (acc: { [key: string]: InputResponse }, [key, value]: [string, any]) => {
+            acc[key] = InputResponse.fromJSON(value);
+            return acc;
+          },
+          {},
+        )
+        : {},
+      requestState: isSet(object.requestState)
+        ? bytesFromBase64(object.requestState)
+        : isSet(object.request_state)
+        ? bytesFromBase64(object.request_state)
+        : new Uint8Array(0),
+    };
+  },
+
+  toJSON(message: CallToolRequest): unknown {
+    const obj: any = {};
+    if (message.meta !== undefined) {
+      obj.meta = RequestMeta.toJSON(message.meta);
+    }
+    if (message.name !== "") {
+      obj.name = message.name;
+    }
+    if (message.arguments !== "") {
+      obj.arguments = message.arguments;
+    }
+    if (message.inputResponses) {
+      const entries = globalThis.Object.entries(message.inputResponses) as [string, InputResponse][];
+      if (entries.length > 0) {
+        obj.inputResponses = {};
+        entries.forEach(([k, v]) => {
+          obj.inputResponses[k] = InputResponse.toJSON(v);
+        });
+      }
+    }
+    if (message.requestState.length !== 0) {
+      obj.requestState = base64FromBytes(message.requestState);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<CallToolRequest>, I>>(base?: I): CallToolRequest {
+    return CallToolRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<CallToolRequest>, I>>(object: I): CallToolRequest {
+    const message = createBaseCallToolRequest();
+    message.meta = (object.meta !== undefined && object.meta !== null)
+      ? RequestMeta.fromPartial(object.meta)
+      : undefined;
+    message.name = object.name ?? "";
+    message.arguments = object.arguments ?? "";
+    message.inputResponses = (globalThis.Object.entries(object.inputResponses ?? {}) as [string, InputResponse][])
+      .reduce((acc: { [key: string]: InputResponse }, [key, value]: [string, InputResponse]) => {
+        if (value !== undefined) {
+          acc[key] = InputResponse.fromPartial(value);
+        }
+        return acc;
+      }, {});
+    message.requestState = object.requestState ?? new Uint8Array(0);
+    return message;
+  },
+};
+
+function createBaseCallToolRequest_InputResponsesEntry(): CallToolRequest_InputResponsesEntry {
+  return { key: "", value: undefined };
+}
+
+export const CallToolRequest_InputResponsesEntry: MessageFns<CallToolRequest_InputResponsesEntry> = {
+  encode(message: CallToolRequest_InputResponsesEntry, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.key !== "") {
+      writer.uint32(10).string(message.key);
+    }
+    if (message.value !== undefined) {
+      InputResponse.encode(message.value, writer.uint32(18).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): CallToolRequest_InputResponsesEntry {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseCallToolRequest_InputResponsesEntry();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.key = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.value = InputResponse.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): CallToolRequest_InputResponsesEntry {
+    return {
+      key: isSet(object.key) ? globalThis.String(object.key) : "",
+      value: isSet(object.value) ? InputResponse.fromJSON(object.value) : undefined,
+    };
+  },
+
+  toJSON(message: CallToolRequest_InputResponsesEntry): unknown {
+    const obj: any = {};
+    if (message.key !== "") {
+      obj.key = message.key;
+    }
+    if (message.value !== undefined) {
+      obj.value = InputResponse.toJSON(message.value);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<CallToolRequest_InputResponsesEntry>, I>>(
+    base?: I,
+  ): CallToolRequest_InputResponsesEntry {
+    return CallToolRequest_InputResponsesEntry.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<CallToolRequest_InputResponsesEntry>, I>>(
+    object: I,
+  ): CallToolRequest_InputResponsesEntry {
+    const message = createBaseCallToolRequest_InputResponsesEntry();
+    message.key = object.key ?? "";
+    message.value = (object.value !== undefined && object.value !== null)
+      ? InputResponse.fromPartial(object.value)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseCallToolResult(): CallToolResult {
+  return { meta: undefined, content: [], isError: false, structuredContent: "" };
+}
+
+export const CallToolResult: MessageFns<CallToolResult> = {
+  encode(message: CallToolResult, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.meta !== undefined) {
+      ResultMeta.encode(message.meta, writer.uint32(10).fork()).join();
+    }
+    for (const v of message.content) {
+      ContentItem.encode(v!, writer.uint32(18).fork()).join();
+    }
+    if (message.isError !== false) {
+      writer.uint32(24).bool(message.isError);
+    }
+    if (message.structuredContent !== "") {
+      writer.uint32(34).string(message.structuredContent);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): CallToolResult {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseCallToolResult();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.meta = ResultMeta.decode(reader, reader.uint32());
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.content.push(ContentItem.decode(reader, reader.uint32()));
+          continue;
+        }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.isError = reader.bool();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.structuredContent = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): CallToolResult {
+    return {
+      meta: isSet(object.meta) ? ResultMeta.fromJSON(object.meta) : undefined,
+      content: globalThis.Array.isArray(object?.content) ? object.content.map((e: any) => ContentItem.fromJSON(e)) : [],
+      isError: isSet(object.isError)
+        ? globalThis.Boolean(object.isError)
+        : isSet(object.is_error)
+        ? globalThis.Boolean(object.is_error)
+        : false,
+      structuredContent: isSet(object.structuredContent)
+        ? globalThis.String(object.structuredContent)
+        : isSet(object.structured_content)
+        ? globalThis.String(object.structured_content)
+        : "",
+    };
+  },
+
+  toJSON(message: CallToolResult): unknown {
+    const obj: any = {};
+    if (message.meta !== undefined) {
+      obj.meta = ResultMeta.toJSON(message.meta);
+    }
+    if (message.content?.length) {
+      obj.content = message.content.map((e) => ContentItem.toJSON(e));
+    }
+    if (message.isError !== false) {
+      obj.isError = message.isError;
+    }
+    if (message.structuredContent !== "") {
+      obj.structuredContent = message.structuredContent;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<CallToolResult>, I>>(base?: I): CallToolResult {
+    return CallToolResult.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<CallToolResult>, I>>(object: I): CallToolResult {
+    const message = createBaseCallToolResult();
+    message.meta = (object.meta !== undefined && object.meta !== null)
+      ? ResultMeta.fromPartial(object.meta)
+      : undefined;
+    message.content = object.content?.map((e) => ContentItem.fromPartial(e)) || [];
+    message.isError = object.isError ?? false;
+    message.structuredContent = object.structuredContent ?? "";
+    return message;
+  },
+};
+
+function createBaseCallToolEvent(): CallToolEvent {
+  return { event: undefined };
+}
+
+export const CallToolEvent: MessageFns<CallToolEvent> = {
+  encode(message: CallToolEvent, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    switch (message.event?.$case) {
+      case "progress":
+        Progress.encode(message.event.progress, writer.uint32(10).fork()).join();
+        break;
+      case "log":
+        LogMessage.encode(message.event.log, writer.uint32(18).fork()).join();
+        break;
+      case "complete":
+        CallToolResult.encode(message.event.complete, writer.uint32(26).fork()).join();
+        break;
+      case "inputRequired":
+        InputRequired.encode(message.event.inputRequired, writer.uint32(34).fork()).join();
+        break;
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): CallToolEvent {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseCallToolEvent();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.event = { $case: "progress", progress: Progress.decode(reader, reader.uint32()) };
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.event = { $case: "log", log: LogMessage.decode(reader, reader.uint32()) };
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.event = { $case: "complete", complete: CallToolResult.decode(reader, reader.uint32()) };
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.event = { $case: "inputRequired", inputRequired: InputRequired.decode(reader, reader.uint32()) };
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): CallToolEvent {
+    return {
+      event: isSet(object.progress)
+        ? { $case: "progress", progress: Progress.fromJSON(object.progress) }
+        : isSet(object.log)
+        ? { $case: "log", log: LogMessage.fromJSON(object.log) }
+        : isSet(object.complete)
+        ? { $case: "complete", complete: CallToolResult.fromJSON(object.complete) }
+        : isSet(object.inputRequired)
+        ? { $case: "inputRequired", inputRequired: InputRequired.fromJSON(object.inputRequired) }
+        : isSet(object.input_required)
+        ? { $case: "inputRequired", inputRequired: InputRequired.fromJSON(object.input_required) }
+        : undefined,
+    };
+  },
+
+  toJSON(message: CallToolEvent): unknown {
+    const obj: any = {};
+    if (message.event?.$case === "progress") {
+      obj.progress = Progress.toJSON(message.event.progress);
+    } else if (message.event?.$case === "log") {
+      obj.log = LogMessage.toJSON(message.event.log);
+    } else if (message.event?.$case === "complete") {
+      obj.complete = CallToolResult.toJSON(message.event.complete);
+    } else if (message.event?.$case === "inputRequired") {
+      obj.inputRequired = InputRequired.toJSON(message.event.inputRequired);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<CallToolEvent>, I>>(base?: I): CallToolEvent {
+    return CallToolEvent.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<CallToolEvent>, I>>(object: I): CallToolEvent {
+    const message = createBaseCallToolEvent();
+    switch (object.event?.$case) {
+      case "progress": {
+        if (object.event?.progress !== undefined && object.event?.progress !== null) {
+          message.event = { $case: "progress", progress: Progress.fromPartial(object.event.progress) };
+        }
+        break;
+      }
+      case "log": {
+        if (object.event?.log !== undefined && object.event?.log !== null) {
+          message.event = { $case: "log", log: LogMessage.fromPartial(object.event.log) };
+        }
+        break;
+      }
+      case "complete": {
+        if (object.event?.complete !== undefined && object.event?.complete !== null) {
+          message.event = { $case: "complete", complete: CallToolResult.fromPartial(object.event.complete) };
+        }
+        break;
+      }
+      case "inputRequired": {
+        if (object.event?.inputRequired !== undefined && object.event?.inputRequired !== null) {
+          message.event = {
+            $case: "inputRequired",
+            inputRequired: InputRequired.fromPartial(object.event.inputRequired),
+          };
+        }
+        break;
+      }
+    }
+    return message;
+  },
+};
+
+function createBaseReadResourceRequest(): ReadResourceRequest {
+  return { meta: undefined, uri: "", inputResponses: {}, requestState: new Uint8Array(0) };
+}
+
+export const ReadResourceRequest: MessageFns<ReadResourceRequest> = {
+  encode(message: ReadResourceRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.meta !== undefined) {
+      RequestMeta.encode(message.meta, writer.uint32(10).fork()).join();
+    }
+    if (message.uri !== "") {
+      writer.uint32(18).string(message.uri);
+    }
+    globalThis.Object.entries(message.inputResponses).forEach(([key, value]: [string, InputResponse]) => {
+      ReadResourceRequest_InputResponsesEntry.encode({ key: key as any, value }, writer.uint32(26).fork()).join();
+    });
+    if (message.requestState.length !== 0) {
+      writer.uint32(34).bytes(message.requestState);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ReadResourceRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseReadResourceRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.meta = RequestMeta.decode(reader, reader.uint32());
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.uri = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          const entry3 = ReadResourceRequest_InputResponsesEntry.decode(reader, reader.uint32());
+          if (entry3.value !== undefined) {
+            message.inputResponses[entry3.key] = entry3.value;
+          }
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.requestState = reader.bytes();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ReadResourceRequest {
+    return {
+      meta: isSet(object.meta) ? RequestMeta.fromJSON(object.meta) : undefined,
+      uri: isSet(object.uri) ? globalThis.String(object.uri) : "",
+      inputResponses: isObject(object.inputResponses)
+        ? (globalThis.Object.entries(object.inputResponses) as [string, any][]).reduce(
+          (acc: { [key: string]: InputResponse }, [key, value]: [string, any]) => {
+            acc[key] = InputResponse.fromJSON(value);
+            return acc;
+          },
+          {},
+        )
+        : isObject(object.input_responses)
+        ? (globalThis.Object.entries(object.input_responses) as [string, any][]).reduce(
+          (acc: { [key: string]: InputResponse }, [key, value]: [string, any]) => {
+            acc[key] = InputResponse.fromJSON(value);
+            return acc;
+          },
+          {},
+        )
+        : {},
+      requestState: isSet(object.requestState)
+        ? bytesFromBase64(object.requestState)
+        : isSet(object.request_state)
+        ? bytesFromBase64(object.request_state)
+        : new Uint8Array(0),
+    };
+  },
+
+  toJSON(message: ReadResourceRequest): unknown {
+    const obj: any = {};
+    if (message.meta !== undefined) {
+      obj.meta = RequestMeta.toJSON(message.meta);
+    }
+    if (message.uri !== "") {
+      obj.uri = message.uri;
+    }
+    if (message.inputResponses) {
+      const entries = globalThis.Object.entries(message.inputResponses) as [string, InputResponse][];
+      if (entries.length > 0) {
+        obj.inputResponses = {};
+        entries.forEach(([k, v]) => {
+          obj.inputResponses[k] = InputResponse.toJSON(v);
+        });
+      }
+    }
+    if (message.requestState.length !== 0) {
+      obj.requestState = base64FromBytes(message.requestState);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ReadResourceRequest>, I>>(base?: I): ReadResourceRequest {
+    return ReadResourceRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ReadResourceRequest>, I>>(object: I): ReadResourceRequest {
+    const message = createBaseReadResourceRequest();
+    message.meta = (object.meta !== undefined && object.meta !== null)
+      ? RequestMeta.fromPartial(object.meta)
+      : undefined;
+    message.uri = object.uri ?? "";
+    message.inputResponses = (globalThis.Object.entries(object.inputResponses ?? {}) as [string, InputResponse][])
+      .reduce((acc: { [key: string]: InputResponse }, [key, value]: [string, InputResponse]) => {
+        if (value !== undefined) {
+          acc[key] = InputResponse.fromPartial(value);
+        }
+        return acc;
+      }, {});
+    message.requestState = object.requestState ?? new Uint8Array(0);
+    return message;
+  },
+};
+
+function createBaseReadResourceRequest_InputResponsesEntry(): ReadResourceRequest_InputResponsesEntry {
+  return { key: "", value: undefined };
+}
+
+export const ReadResourceRequest_InputResponsesEntry: MessageFns<ReadResourceRequest_InputResponsesEntry> = {
+  encode(message: ReadResourceRequest_InputResponsesEntry, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.key !== "") {
+      writer.uint32(10).string(message.key);
+    }
+    if (message.value !== undefined) {
+      InputResponse.encode(message.value, writer.uint32(18).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ReadResourceRequest_InputResponsesEntry {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseReadResourceRequest_InputResponsesEntry();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.key = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.value = InputResponse.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ReadResourceRequest_InputResponsesEntry {
+    return {
+      key: isSet(object.key) ? globalThis.String(object.key) : "",
+      value: isSet(object.value) ? InputResponse.fromJSON(object.value) : undefined,
+    };
+  },
+
+  toJSON(message: ReadResourceRequest_InputResponsesEntry): unknown {
+    const obj: any = {};
+    if (message.key !== "") {
+      obj.key = message.key;
+    }
+    if (message.value !== undefined) {
+      obj.value = InputResponse.toJSON(message.value);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ReadResourceRequest_InputResponsesEntry>, I>>(
+    base?: I,
+  ): ReadResourceRequest_InputResponsesEntry {
+    return ReadResourceRequest_InputResponsesEntry.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ReadResourceRequest_InputResponsesEntry>, I>>(
+    object: I,
+  ): ReadResourceRequest_InputResponsesEntry {
+    const message = createBaseReadResourceRequest_InputResponsesEntry();
+    message.key = object.key ?? "";
+    message.value = (object.value !== undefined && object.value !== null)
+      ? InputResponse.fromPartial(object.value)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseReadResourceResult(): ReadResourceResult {
+  return { meta: undefined, content: [], cache: undefined };
+}
+
+export const ReadResourceResult: MessageFns<ReadResourceResult> = {
+  encode(message: ReadResourceResult, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.meta !== undefined) {
+      ResultMeta.encode(message.meta, writer.uint32(10).fork()).join();
+    }
+    for (const v of message.content) {
+      ContentItem.encode(v!, writer.uint32(18).fork()).join();
+    }
+    if (message.cache !== undefined) {
+      CacheHint.encode(message.cache, writer.uint32(26).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ReadResourceResult {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseReadResourceResult();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.meta = ResultMeta.decode(reader, reader.uint32());
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.content.push(ContentItem.decode(reader, reader.uint32()));
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.cache = CacheHint.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ReadResourceResult {
+    return {
+      meta: isSet(object.meta) ? ResultMeta.fromJSON(object.meta) : undefined,
+      content: globalThis.Array.isArray(object?.content) ? object.content.map((e: any) => ContentItem.fromJSON(e)) : [],
+      cache: isSet(object.cache) ? CacheHint.fromJSON(object.cache) : undefined,
+    };
+  },
+
+  toJSON(message: ReadResourceResult): unknown {
+    const obj: any = {};
+    if (message.meta !== undefined) {
+      obj.meta = ResultMeta.toJSON(message.meta);
+    }
+    if (message.content?.length) {
+      obj.content = message.content.map((e) => ContentItem.toJSON(e));
+    }
+    if (message.cache !== undefined) {
+      obj.cache = CacheHint.toJSON(message.cache);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ReadResourceResult>, I>>(base?: I): ReadResourceResult {
+    return ReadResourceResult.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ReadResourceResult>, I>>(object: I): ReadResourceResult {
+    const message = createBaseReadResourceResult();
+    message.meta = (object.meta !== undefined && object.meta !== null)
+      ? ResultMeta.fromPartial(object.meta)
+      : undefined;
+    message.content = object.content?.map((e) => ContentItem.fromPartial(e)) || [];
+    message.cache = (object.cache !== undefined && object.cache !== null)
+      ? CacheHint.fromPartial(object.cache)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseReadResourceEvent(): ReadResourceEvent {
+  return { event: undefined };
+}
+
+export const ReadResourceEvent: MessageFns<ReadResourceEvent> = {
+  encode(message: ReadResourceEvent, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    switch (message.event?.$case) {
+      case "progress":
+        Progress.encode(message.event.progress, writer.uint32(10).fork()).join();
+        break;
+      case "log":
+        LogMessage.encode(message.event.log, writer.uint32(18).fork()).join();
+        break;
+      case "complete":
+        ReadResourceResult.encode(message.event.complete, writer.uint32(26).fork()).join();
+        break;
+      case "inputRequired":
+        InputRequired.encode(message.event.inputRequired, writer.uint32(34).fork()).join();
+        break;
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ReadResourceEvent {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseReadResourceEvent();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.event = { $case: "progress", progress: Progress.decode(reader, reader.uint32()) };
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.event = { $case: "log", log: LogMessage.decode(reader, reader.uint32()) };
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.event = { $case: "complete", complete: ReadResourceResult.decode(reader, reader.uint32()) };
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.event = { $case: "inputRequired", inputRequired: InputRequired.decode(reader, reader.uint32()) };
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ReadResourceEvent {
+    return {
+      event: isSet(object.progress)
+        ? { $case: "progress", progress: Progress.fromJSON(object.progress) }
+        : isSet(object.log)
+        ? { $case: "log", log: LogMessage.fromJSON(object.log) }
+        : isSet(object.complete)
+        ? { $case: "complete", complete: ReadResourceResult.fromJSON(object.complete) }
+        : isSet(object.inputRequired)
+        ? { $case: "inputRequired", inputRequired: InputRequired.fromJSON(object.inputRequired) }
+        : isSet(object.input_required)
+        ? { $case: "inputRequired", inputRequired: InputRequired.fromJSON(object.input_required) }
+        : undefined,
+    };
+  },
+
+  toJSON(message: ReadResourceEvent): unknown {
+    const obj: any = {};
+    if (message.event?.$case === "progress") {
+      obj.progress = Progress.toJSON(message.event.progress);
+    } else if (message.event?.$case === "log") {
+      obj.log = LogMessage.toJSON(message.event.log);
+    } else if (message.event?.$case === "complete") {
+      obj.complete = ReadResourceResult.toJSON(message.event.complete);
+    } else if (message.event?.$case === "inputRequired") {
+      obj.inputRequired = InputRequired.toJSON(message.event.inputRequired);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ReadResourceEvent>, I>>(base?: I): ReadResourceEvent {
+    return ReadResourceEvent.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ReadResourceEvent>, I>>(object: I): ReadResourceEvent {
+    const message = createBaseReadResourceEvent();
+    switch (object.event?.$case) {
+      case "progress": {
+        if (object.event?.progress !== undefined && object.event?.progress !== null) {
+          message.event = { $case: "progress", progress: Progress.fromPartial(object.event.progress) };
+        }
+        break;
+      }
+      case "log": {
+        if (object.event?.log !== undefined && object.event?.log !== null) {
+          message.event = { $case: "log", log: LogMessage.fromPartial(object.event.log) };
+        }
+        break;
+      }
+      case "complete": {
+        if (object.event?.complete !== undefined && object.event?.complete !== null) {
+          message.event = { $case: "complete", complete: ReadResourceResult.fromPartial(object.event.complete) };
+        }
+        break;
+      }
+      case "inputRequired": {
+        if (object.event?.inputRequired !== undefined && object.event?.inputRequired !== null) {
+          message.event = {
+            $case: "inputRequired",
+            inputRequired: InputRequired.fromPartial(object.event.inputRequired),
+          };
+        }
+        break;
+      }
+    }
+    return message;
+  },
+};
+
+function createBaseGetPromptRequest(): GetPromptRequest {
+  return { meta: undefined, name: "", arguments: {}, inputResponses: {}, requestState: new Uint8Array(0) };
+}
+
+export const GetPromptRequest: MessageFns<GetPromptRequest> = {
+  encode(message: GetPromptRequest, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.meta !== undefined) {
+      RequestMeta.encode(message.meta, writer.uint32(10).fork()).join();
+    }
+    if (message.name !== "") {
+      writer.uint32(18).string(message.name);
+    }
+    globalThis.Object.entries(message.arguments).forEach(([key, value]: [string, string]) => {
+      GetPromptRequest_ArgumentsEntry.encode({ key: key as any, value }, writer.uint32(26).fork()).join();
+    });
+    globalThis.Object.entries(message.inputResponses).forEach(([key, value]: [string, InputResponse]) => {
+      GetPromptRequest_InputResponsesEntry.encode({ key: key as any, value }, writer.uint32(34).fork()).join();
+    });
+    if (message.requestState.length !== 0) {
+      writer.uint32(42).bytes(message.requestState);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): GetPromptRequest {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseGetPromptRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.meta = RequestMeta.decode(reader, reader.uint32());
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.name = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          const entry3 = GetPromptRequest_ArgumentsEntry.decode(reader, reader.uint32());
+          if (entry3.value !== undefined) {
+            message.arguments[entry3.key] = entry3.value;
+          }
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          const entry4 = GetPromptRequest_InputResponsesEntry.decode(reader, reader.uint32());
+          if (entry4.value !== undefined) {
+            message.inputResponses[entry4.key] = entry4.value;
+          }
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.requestState = reader.bytes();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): GetPromptRequest {
+    return {
+      meta: isSet(object.meta) ? RequestMeta.fromJSON(object.meta) : undefined,
+      name: isSet(object.name) ? globalThis.String(object.name) : "",
+      arguments: isObject(object.arguments)
+        ? (globalThis.Object.entries(object.arguments) as [string, any][]).reduce(
+          (acc: { [key: string]: string }, [key, value]: [string, any]) => {
+            acc[key] = globalThis.String(value);
+            return acc;
+          },
+          {},
+        )
+        : {},
+      inputResponses: isObject(object.inputResponses)
+        ? (globalThis.Object.entries(object.inputResponses) as [string, any][]).reduce(
+          (acc: { [key: string]: InputResponse }, [key, value]: [string, any]) => {
+            acc[key] = InputResponse.fromJSON(value);
+            return acc;
+          },
+          {},
+        )
+        : isObject(object.input_responses)
+        ? (globalThis.Object.entries(object.input_responses) as [string, any][]).reduce(
+          (acc: { [key: string]: InputResponse }, [key, value]: [string, any]) => {
+            acc[key] = InputResponse.fromJSON(value);
+            return acc;
+          },
+          {},
+        )
+        : {},
+      requestState: isSet(object.requestState)
+        ? bytesFromBase64(object.requestState)
+        : isSet(object.request_state)
+        ? bytesFromBase64(object.request_state)
+        : new Uint8Array(0),
+    };
+  },
+
+  toJSON(message: GetPromptRequest): unknown {
+    const obj: any = {};
+    if (message.meta !== undefined) {
+      obj.meta = RequestMeta.toJSON(message.meta);
+    }
+    if (message.name !== "") {
+      obj.name = message.name;
+    }
+    if (message.arguments) {
+      const entries = globalThis.Object.entries(message.arguments) as [string, string][];
+      if (entries.length > 0) {
+        obj.arguments = {};
+        entries.forEach(([k, v]) => {
+          obj.arguments[k] = v;
+        });
+      }
+    }
+    if (message.inputResponses) {
+      const entries = globalThis.Object.entries(message.inputResponses) as [string, InputResponse][];
+      if (entries.length > 0) {
+        obj.inputResponses = {};
+        entries.forEach(([k, v]) => {
+          obj.inputResponses[k] = InputResponse.toJSON(v);
+        });
+      }
+    }
+    if (message.requestState.length !== 0) {
+      obj.requestState = base64FromBytes(message.requestState);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<GetPromptRequest>, I>>(base?: I): GetPromptRequest {
+    return GetPromptRequest.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<GetPromptRequest>, I>>(object: I): GetPromptRequest {
+    const message = createBaseGetPromptRequest();
+    message.meta = (object.meta !== undefined && object.meta !== null)
+      ? RequestMeta.fromPartial(object.meta)
+      : undefined;
+    message.name = object.name ?? "";
+    message.arguments = (globalThis.Object.entries(object.arguments ?? {}) as [string, string][]).reduce(
+      (acc: { [key: string]: string }, [key, value]: [string, string]) => {
+        if (value !== undefined) {
+          acc[key] = globalThis.String(value);
+        }
+        return acc;
+      },
+      {},
+    );
+    message.inputResponses = (globalThis.Object.entries(object.inputResponses ?? {}) as [string, InputResponse][])
+      .reduce((acc: { [key: string]: InputResponse }, [key, value]: [string, InputResponse]) => {
+        if (value !== undefined) {
+          acc[key] = InputResponse.fromPartial(value);
+        }
+        return acc;
+      }, {});
+    message.requestState = object.requestState ?? new Uint8Array(0);
+    return message;
+  },
+};
+
+function createBaseGetPromptRequest_ArgumentsEntry(): GetPromptRequest_ArgumentsEntry {
+  return { key: "", value: "" };
+}
+
+export const GetPromptRequest_ArgumentsEntry: MessageFns<GetPromptRequest_ArgumentsEntry> = {
+  encode(message: GetPromptRequest_ArgumentsEntry, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.key !== "") {
+      writer.uint32(10).string(message.key);
+    }
+    if (message.value !== "") {
+      writer.uint32(18).string(message.value);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): GetPromptRequest_ArgumentsEntry {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseGetPromptRequest_ArgumentsEntry();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.key = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.value = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): GetPromptRequest_ArgumentsEntry {
+    return {
+      key: isSet(object.key) ? globalThis.String(object.key) : "",
+      value: isSet(object.value) ? globalThis.String(object.value) : "",
+    };
+  },
+
+  toJSON(message: GetPromptRequest_ArgumentsEntry): unknown {
+    const obj: any = {};
+    if (message.key !== "") {
+      obj.key = message.key;
+    }
+    if (message.value !== "") {
+      obj.value = message.value;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<GetPromptRequest_ArgumentsEntry>, I>>(base?: I): GetPromptRequest_ArgumentsEntry {
+    return GetPromptRequest_ArgumentsEntry.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<GetPromptRequest_ArgumentsEntry>, I>>(
+    object: I,
+  ): GetPromptRequest_ArgumentsEntry {
+    const message = createBaseGetPromptRequest_ArgumentsEntry();
+    message.key = object.key ?? "";
+    message.value = object.value ?? "";
+    return message;
+  },
+};
+
+function createBaseGetPromptRequest_InputResponsesEntry(): GetPromptRequest_InputResponsesEntry {
+  return { key: "", value: undefined };
+}
+
+export const GetPromptRequest_InputResponsesEntry: MessageFns<GetPromptRequest_InputResponsesEntry> = {
+  encode(message: GetPromptRequest_InputResponsesEntry, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.key !== "") {
+      writer.uint32(10).string(message.key);
+    }
+    if (message.value !== undefined) {
+      InputResponse.encode(message.value, writer.uint32(18).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): GetPromptRequest_InputResponsesEntry {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseGetPromptRequest_InputResponsesEntry();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.key = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.value = InputResponse.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): GetPromptRequest_InputResponsesEntry {
+    return {
+      key: isSet(object.key) ? globalThis.String(object.key) : "",
+      value: isSet(object.value) ? InputResponse.fromJSON(object.value) : undefined,
+    };
+  },
+
+  toJSON(message: GetPromptRequest_InputResponsesEntry): unknown {
+    const obj: any = {};
+    if (message.key !== "") {
+      obj.key = message.key;
+    }
+    if (message.value !== undefined) {
+      obj.value = InputResponse.toJSON(message.value);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<GetPromptRequest_InputResponsesEntry>, I>>(
+    base?: I,
+  ): GetPromptRequest_InputResponsesEntry {
+    return GetPromptRequest_InputResponsesEntry.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<GetPromptRequest_InputResponsesEntry>, I>>(
+    object: I,
+  ): GetPromptRequest_InputResponsesEntry {
+    const message = createBaseGetPromptRequest_InputResponsesEntry();
+    message.key = object.key ?? "";
+    message.value = (object.value !== undefined && object.value !== null)
+      ? InputResponse.fromPartial(object.value)
+      : undefined;
+    return message;
+  },
+};
+
+function createBasePromptMessage(): PromptMessage {
+  return { role: "", content: undefined };
+}
+
+export const PromptMessage: MessageFns<PromptMessage> = {
+  encode(message: PromptMessage, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.role !== "") {
+      writer.uint32(10).string(message.role);
+    }
+    if (message.content !== undefined) {
+      ContentItem.encode(message.content, writer.uint32(18).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): PromptMessage {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBasePromptMessage();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.role = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.content = ContentItem.decode(reader, reader.uint32());
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): PromptMessage {
+    return {
+      role: isSet(object.role) ? globalThis.String(object.role) : "",
+      content: isSet(object.content) ? ContentItem.fromJSON(object.content) : undefined,
+    };
+  },
+
+  toJSON(message: PromptMessage): unknown {
+    const obj: any = {};
+    if (message.role !== "") {
+      obj.role = message.role;
+    }
+    if (message.content !== undefined) {
+      obj.content = ContentItem.toJSON(message.content);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<PromptMessage>, I>>(base?: I): PromptMessage {
+    return PromptMessage.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<PromptMessage>, I>>(object: I): PromptMessage {
+    const message = createBasePromptMessage();
+    message.role = object.role ?? "";
+    message.content = (object.content !== undefined && object.content !== null)
+      ? ContentItem.fromPartial(object.content)
+      : undefined;
+    return message;
+  },
+};
+
+function createBaseGetPromptResult(): GetPromptResult {
+  return { meta: undefined, messages: [] };
+}
+
+export const GetPromptResult: MessageFns<GetPromptResult> = {
+  encode(message: GetPromptResult, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.meta !== undefined) {
+      ResultMeta.encode(message.meta, writer.uint32(10).fork()).join();
+    }
+    for (const v of message.messages) {
+      PromptMessage.encode(v!, writer.uint32(18).fork()).join();
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): GetPromptResult {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseGetPromptResult();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.meta = ResultMeta.decode(reader, reader.uint32());
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.messages.push(PromptMessage.decode(reader, reader.uint32()));
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): GetPromptResult {
+    return {
+      meta: isSet(object.meta) ? ResultMeta.fromJSON(object.meta) : undefined,
+      messages: globalThis.Array.isArray(object?.messages)
+        ? object.messages.map((e: any) => PromptMessage.fromJSON(e))
+        : [],
+    };
+  },
+
+  toJSON(message: GetPromptResult): unknown {
+    const obj: any = {};
+    if (message.meta !== undefined) {
+      obj.meta = ResultMeta.toJSON(message.meta);
+    }
+    if (message.messages?.length) {
+      obj.messages = message.messages.map((e) => PromptMessage.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<GetPromptResult>, I>>(base?: I): GetPromptResult {
+    return GetPromptResult.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<GetPromptResult>, I>>(object: I): GetPromptResult {
+    const message = createBaseGetPromptResult();
+    message.meta = (object.meta !== undefined && object.meta !== null)
+      ? ResultMeta.fromPartial(object.meta)
+      : undefined;
+    message.messages = object.messages?.map((e) => PromptMessage.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseGetPromptEvent(): GetPromptEvent {
+  return { event: undefined };
+}
+
+export const GetPromptEvent: MessageFns<GetPromptEvent> = {
+  encode(message: GetPromptEvent, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    switch (message.event?.$case) {
+      case "progress":
+        Progress.encode(message.event.progress, writer.uint32(10).fork()).join();
+        break;
+      case "log":
+        LogMessage.encode(message.event.log, writer.uint32(18).fork()).join();
+        break;
+      case "complete":
+        GetPromptResult.encode(message.event.complete, writer.uint32(26).fork()).join();
+        break;
+      case "inputRequired":
+        InputRequired.encode(message.event.inputRequired, writer.uint32(34).fork()).join();
+        break;
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): GetPromptEvent {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseGetPromptEvent();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.event = { $case: "progress", progress: Progress.decode(reader, reader.uint32()) };
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.event = { $case: "log", log: LogMessage.decode(reader, reader.uint32()) };
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.event = { $case: "complete", complete: GetPromptResult.decode(reader, reader.uint32()) };
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.event = { $case: "inputRequired", inputRequired: InputRequired.decode(reader, reader.uint32()) };
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): GetPromptEvent {
+    return {
+      event: isSet(object.progress)
+        ? { $case: "progress", progress: Progress.fromJSON(object.progress) }
+        : isSet(object.log)
+        ? { $case: "log", log: LogMessage.fromJSON(object.log) }
+        : isSet(object.complete)
+        ? { $case: "complete", complete: GetPromptResult.fromJSON(object.complete) }
+        : isSet(object.inputRequired)
+        ? { $case: "inputRequired", inputRequired: InputRequired.fromJSON(object.inputRequired) }
+        : isSet(object.input_required)
+        ? { $case: "inputRequired", inputRequired: InputRequired.fromJSON(object.input_required) }
+        : undefined,
+    };
+  },
+
+  toJSON(message: GetPromptEvent): unknown {
+    const obj: any = {};
+    if (message.event?.$case === "progress") {
+      obj.progress = Progress.toJSON(message.event.progress);
+    } else if (message.event?.$case === "log") {
+      obj.log = LogMessage.toJSON(message.event.log);
+    } else if (message.event?.$case === "complete") {
+      obj.complete = GetPromptResult.toJSON(message.event.complete);
+    } else if (message.event?.$case === "inputRequired") {
+      obj.inputRequired = InputRequired.toJSON(message.event.inputRequired);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<GetPromptEvent>, I>>(base?: I): GetPromptEvent {
+    return GetPromptEvent.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<GetPromptEvent>, I>>(object: I): GetPromptEvent {
+    const message = createBaseGetPromptEvent();
+    switch (object.event?.$case) {
+      case "progress": {
+        if (object.event?.progress !== undefined && object.event?.progress !== null) {
+          message.event = { $case: "progress", progress: Progress.fromPartial(object.event.progress) };
+        }
+        break;
+      }
+      case "log": {
+        if (object.event?.log !== undefined && object.event?.log !== null) {
+          message.event = { $case: "log", log: LogMessage.fromPartial(object.event.log) };
+        }
+        break;
+      }
+      case "complete": {
+        if (object.event?.complete !== undefined && object.event?.complete !== null) {
+          message.event = { $case: "complete", complete: GetPromptResult.fromPartial(object.event.complete) };
+        }
+        break;
+      }
+      case "inputRequired": {
+        if (object.event?.inputRequired !== undefined && object.event?.inputRequired !== null) {
+          message.event = {
+            $case: "inputRequired",
+            inputRequired: InputRequired.fromPartial(object.event.inputRequired),
+          };
+        }
+        break;
+      }
+    }
+    return message;
+  },
+};
+
 /**
  * RapidMCP protocol v2 — MCP 2026-07-28 semantics over gRPC.
  * Stateless: every request carries its own RequestMeta; nothing is inferred
@@ -3533,6 +6269,30 @@ export const McpDefinition = {
       responseStream: false,
       options: {},
     },
+    callTool: {
+      name: "CallTool",
+      requestType: CallToolRequest as typeof CallToolRequest,
+      requestStream: false,
+      responseType: CallToolEvent as typeof CallToolEvent,
+      responseStream: true,
+      options: {},
+    },
+    readResource: {
+      name: "ReadResource",
+      requestType: ReadResourceRequest as typeof ReadResourceRequest,
+      requestStream: false,
+      responseType: ReadResourceEvent as typeof ReadResourceEvent,
+      responseStream: true,
+      options: {},
+    },
+    getPrompt: {
+      name: "GetPrompt",
+      requestType: GetPromptRequest as typeof GetPromptRequest,
+      requestStream: false,
+      responseType: GetPromptEvent as typeof GetPromptEvent,
+      responseStream: true,
+      options: {},
+    },
   },
 } as const;
 
@@ -3552,6 +6312,18 @@ export interface McpServiceImplementation<CallContextExt = {}> {
     context: CallContext & CallContextExt,
   ): Promise<DeepPartial<ListPromptsResult>>;
   complete(request: CompleteRequest, context: CallContext & CallContextExt): Promise<DeepPartial<CompleteResult>>;
+  callTool(
+    request: CallToolRequest,
+    context: CallContext & CallContextExt,
+  ): ServerStreamingMethodResult<DeepPartial<CallToolEvent>>;
+  readResource(
+    request: ReadResourceRequest,
+    context: CallContext & CallContextExt,
+  ): ServerStreamingMethodResult<DeepPartial<ReadResourceEvent>>;
+  getPrompt(
+    request: GetPromptRequest,
+    context: CallContext & CallContextExt,
+  ): ServerStreamingMethodResult<DeepPartial<GetPromptEvent>>;
 }
 
 export interface McpClient<CallOptionsExt = {}> {
@@ -3570,6 +6342,40 @@ export interface McpClient<CallOptionsExt = {}> {
     options?: CallOptions & CallOptionsExt,
   ): Promise<ListPromptsResult>;
   complete(request: DeepPartial<CompleteRequest>, options?: CallOptions & CallOptionsExt): Promise<CompleteResult>;
+  callTool(request: DeepPartial<CallToolRequest>, options?: CallOptions & CallOptionsExt): AsyncIterable<CallToolEvent>;
+  readResource(
+    request: DeepPartial<ReadResourceRequest>,
+    options?: CallOptions & CallOptionsExt,
+  ): AsyncIterable<ReadResourceEvent>;
+  getPrompt(
+    request: DeepPartial<GetPromptRequest>,
+    options?: CallOptions & CallOptionsExt,
+  ): AsyncIterable<GetPromptEvent>;
+}
+
+function bytesFromBase64(b64: string): Uint8Array {
+  if ((globalThis as any).Buffer) {
+    return Uint8Array.from((globalThis as any).Buffer.from(b64, "base64"));
+  } else {
+    const bin = globalThis.atob(b64);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; ++i) {
+      arr[i] = bin.charCodeAt(i);
+    }
+    return arr;
+  }
+}
+
+function base64FromBytes(arr: Uint8Array): string {
+  if ((globalThis as any).Buffer) {
+    return (globalThis as any).Buffer.from(arr).toString("base64");
+  } else {
+    const bin: string[] = [];
+    arr.forEach((byte) => {
+      bin.push(globalThis.String.fromCharCode(byte));
+    });
+    return globalThis.btoa(bin.join(""));
+  }
 }
 
 type Builtin = Date | Function | Uint8Array | string | number | boolean | bigint | undefined;
@@ -3592,6 +6398,8 @@ function isObject(value: any): boolean {
 function isSet(value: any): boolean {
   return value !== null && value !== undefined;
 }
+
+export type ServerStreamingMethodResult<Response> = { [Symbol.asyncIterator](): AsyncIterator<Response, void> };
 
 export interface MessageFns<T> {
   encode(message: T, writer?: BinaryWriter): BinaryWriter;

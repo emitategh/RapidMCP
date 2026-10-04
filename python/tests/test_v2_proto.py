@@ -1,20 +1,25 @@
 """The v2 stubs exist and describe the phase 1 service."""
 
 
-def test_v2_service_has_the_phase_1_methods():
+def test_v2_service_has_the_expected_methods():
     from rapidmcp._generated import mcp_v2_pb2
 
     service = mcp_v2_pb2.DESCRIPTOR.services_by_name["Mcp"]
 
     assert service.full_name == "mcp.v2.Mcp"
     assert sorted(m.name for m in service.methods) == [
+        "CallTool",
         "Complete",
         "Discover",
+        "GetPrompt",
         "ListPrompts",
         "ListResourceTemplates",
         "ListResources",
         "ListTools",
+        "ReadResource",
     ]
+    streaming = {m.name for m in service.methods if m.server_streaming}
+    assert streaming == {"CallTool", "ReadResource", "GetPrompt"}
 
 
 def test_annotation_hints_can_be_left_unset():
