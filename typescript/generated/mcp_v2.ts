@@ -46,6 +46,18 @@ export function cacheScopeToJSON(object: CacheScope): string {
 export interface Implementation {
   name: string;
   version: string;
+  icons: Icon[];
+}
+
+/** A visual identifier for a tool, resource, prompt or implementation. */
+export interface Icon {
+  /** https: URL or data: URI */
+  src: string;
+  mimeType: string;
+  /** e.g. "48x48", "any" */
+  sizes: string[];
+  /** "light" | "dark" | "" */
+  theme: string;
 }
 
 export interface ElicitationCapability {
@@ -165,6 +177,7 @@ export interface Tool {
   outputSchema: string;
   /** unset = no annotations */
   annotations: ToolAnnotations | undefined;
+  icons: Icon[];
 }
 
 export interface ListToolsRequest {
@@ -184,6 +197,7 @@ export interface Resource {
   name: string;
   description: string;
   mimeType: string;
+  icons: Icon[];
 }
 
 export interface ListResourcesRequest {
@@ -203,6 +217,7 @@ export interface ResourceTemplate {
   name: string;
   description: string;
   mimeType: string;
+  icons: Icon[];
 }
 
 export interface ListResourceTemplatesRequest {
@@ -227,6 +242,7 @@ export interface Prompt {
   name: string;
   description: string;
   arguments: PromptArgument[];
+  icons: Icon[];
 }
 
 export interface ListPromptsRequest {
@@ -468,7 +484,7 @@ export interface ListenEvent {
 }
 
 function createBaseImplementation(): Implementation {
-  return { name: "", version: "" };
+  return { name: "", version: "", icons: [] };
 }
 
 export const Implementation: MessageFns<Implementation> = {
@@ -478,6 +494,9 @@ export const Implementation: MessageFns<Implementation> = {
     }
     if (message.version !== "") {
       writer.uint32(18).string(message.version);
+    }
+    for (const v of message.icons) {
+      Icon.encode(v!, writer.uint32(26).fork()).join();
     }
     return writer;
   },
@@ -505,6 +524,14 @@ export const Implementation: MessageFns<Implementation> = {
           message.version = reader.string();
           continue;
         }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.icons.push(Icon.decode(reader, reader.uint32()));
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -518,6 +545,7 @@ export const Implementation: MessageFns<Implementation> = {
     return {
       name: isSet(object.name) ? globalThis.String(object.name) : "",
       version: isSet(object.version) ? globalThis.String(object.version) : "",
+      icons: globalThis.Array.isArray(object?.icons) ? object.icons.map((e: any) => Icon.fromJSON(e)) : [],
     };
   },
 
@@ -529,6 +557,9 @@ export const Implementation: MessageFns<Implementation> = {
     if (message.version !== "") {
       obj.version = message.version;
     }
+    if (message.icons?.length) {
+      obj.icons = message.icons.map((e) => Icon.toJSON(e));
+    }
     return obj;
   },
 
@@ -539,6 +570,119 @@ export const Implementation: MessageFns<Implementation> = {
     const message = createBaseImplementation();
     message.name = object.name ?? "";
     message.version = object.version ?? "";
+    message.icons = object.icons?.map((e) => Icon.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseIcon(): Icon {
+  return { src: "", mimeType: "", sizes: [], theme: "" };
+}
+
+export const Icon: MessageFns<Icon> = {
+  encode(message: Icon, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.src !== "") {
+      writer.uint32(10).string(message.src);
+    }
+    if (message.mimeType !== "") {
+      writer.uint32(18).string(message.mimeType);
+    }
+    for (const v of message.sizes) {
+      writer.uint32(26).string(v!);
+    }
+    if (message.theme !== "") {
+      writer.uint32(34).string(message.theme);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): Icon {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    const end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseIcon();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.src = reader.string();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.mimeType = reader.string();
+          continue;
+        }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.sizes.push(reader.string());
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.theme = reader.string();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): Icon {
+    return {
+      src: isSet(object.src) ? globalThis.String(object.src) : "",
+      mimeType: isSet(object.mimeType)
+        ? globalThis.String(object.mimeType)
+        : isSet(object.mime_type)
+        ? globalThis.String(object.mime_type)
+        : "",
+      sizes: globalThis.Array.isArray(object?.sizes) ? object.sizes.map((e: any) => globalThis.String(e)) : [],
+      theme: isSet(object.theme) ? globalThis.String(object.theme) : "",
+    };
+  },
+
+  toJSON(message: Icon): unknown {
+    const obj: any = {};
+    if (message.src !== "") {
+      obj.src = message.src;
+    }
+    if (message.mimeType !== "") {
+      obj.mimeType = message.mimeType;
+    }
+    if (message.sizes?.length) {
+      obj.sizes = message.sizes;
+    }
+    if (message.theme !== "") {
+      obj.theme = message.theme;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<Icon>, I>>(base?: I): Icon {
+    return Icon.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<Icon>, I>>(object: I): Icon {
+    const message = createBaseIcon();
+    message.src = object.src ?? "";
+    message.mimeType = object.mimeType ?? "";
+    message.sizes = object.sizes?.map((e) => e) || [];
+    message.theme = object.theme ?? "";
     return message;
   },
 };
@@ -1989,7 +2133,7 @@ export const ToolAnnotations: MessageFns<ToolAnnotations> = {
 };
 
 function createBaseTool(): Tool {
-  return { name: "", description: "", inputSchema: "", outputSchema: "", annotations: undefined };
+  return { name: "", description: "", inputSchema: "", outputSchema: "", annotations: undefined, icons: [] };
 }
 
 export const Tool: MessageFns<Tool> = {
@@ -2008,6 +2152,9 @@ export const Tool: MessageFns<Tool> = {
     }
     if (message.annotations !== undefined) {
       ToolAnnotations.encode(message.annotations, writer.uint32(42).fork()).join();
+    }
+    for (const v of message.icons) {
+      Icon.encode(v!, writer.uint32(50).fork()).join();
     }
     return writer;
   },
@@ -2059,6 +2206,14 @@ export const Tool: MessageFns<Tool> = {
           message.annotations = ToolAnnotations.decode(reader, reader.uint32());
           continue;
         }
+        case 6: {
+          if (tag !== 50) {
+            break;
+          }
+
+          message.icons.push(Icon.decode(reader, reader.uint32()));
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -2083,6 +2238,7 @@ export const Tool: MessageFns<Tool> = {
         ? globalThis.String(object.output_schema)
         : "",
       annotations: isSet(object.annotations) ? ToolAnnotations.fromJSON(object.annotations) : undefined,
+      icons: globalThis.Array.isArray(object?.icons) ? object.icons.map((e: any) => Icon.fromJSON(e)) : [],
     };
   },
 
@@ -2103,6 +2259,9 @@ export const Tool: MessageFns<Tool> = {
     if (message.annotations !== undefined) {
       obj.annotations = ToolAnnotations.toJSON(message.annotations);
     }
+    if (message.icons?.length) {
+      obj.icons = message.icons.map((e) => Icon.toJSON(e));
+    }
     return obj;
   },
 
@@ -2118,6 +2277,7 @@ export const Tool: MessageFns<Tool> = {
     message.annotations = (object.annotations !== undefined && object.annotations !== null)
       ? ToolAnnotations.fromPartial(object.annotations)
       : undefined;
+    message.icons = object.icons?.map((e) => Icon.fromPartial(e)) || [];
     return message;
   },
 };
@@ -2317,7 +2477,7 @@ export const ListToolsResult: MessageFns<ListToolsResult> = {
 };
 
 function createBaseResource(): Resource {
-  return { uri: "", name: "", description: "", mimeType: "" };
+  return { uri: "", name: "", description: "", mimeType: "", icons: [] };
 }
 
 export const Resource: MessageFns<Resource> = {
@@ -2333,6 +2493,9 @@ export const Resource: MessageFns<Resource> = {
     }
     if (message.mimeType !== "") {
       writer.uint32(34).string(message.mimeType);
+    }
+    for (const v of message.icons) {
+      Icon.encode(v!, writer.uint32(42).fork()).join();
     }
     return writer;
   },
@@ -2376,6 +2539,14 @@ export const Resource: MessageFns<Resource> = {
           message.mimeType = reader.string();
           continue;
         }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.icons.push(Icon.decode(reader, reader.uint32()));
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -2395,6 +2566,7 @@ export const Resource: MessageFns<Resource> = {
         : isSet(object.mime_type)
         ? globalThis.String(object.mime_type)
         : "",
+      icons: globalThis.Array.isArray(object?.icons) ? object.icons.map((e: any) => Icon.fromJSON(e)) : [],
     };
   },
 
@@ -2412,6 +2584,9 @@ export const Resource: MessageFns<Resource> = {
     if (message.mimeType !== "") {
       obj.mimeType = message.mimeType;
     }
+    if (message.icons?.length) {
+      obj.icons = message.icons.map((e) => Icon.toJSON(e));
+    }
     return obj;
   },
 
@@ -2424,6 +2599,7 @@ export const Resource: MessageFns<Resource> = {
     message.name = object.name ?? "";
     message.description = object.description ?? "";
     message.mimeType = object.mimeType ?? "";
+    message.icons = object.icons?.map((e) => Icon.fromPartial(e)) || [];
     return message;
   },
 };
@@ -2625,7 +2801,7 @@ export const ListResourcesResult: MessageFns<ListResourcesResult> = {
 };
 
 function createBaseResourceTemplate(): ResourceTemplate {
-  return { uriTemplate: "", name: "", description: "", mimeType: "" };
+  return { uriTemplate: "", name: "", description: "", mimeType: "", icons: [] };
 }
 
 export const ResourceTemplate: MessageFns<ResourceTemplate> = {
@@ -2641,6 +2817,9 @@ export const ResourceTemplate: MessageFns<ResourceTemplate> = {
     }
     if (message.mimeType !== "") {
       writer.uint32(34).string(message.mimeType);
+    }
+    for (const v of message.icons) {
+      Icon.encode(v!, writer.uint32(42).fork()).join();
     }
     return writer;
   },
@@ -2684,6 +2863,14 @@ export const ResourceTemplate: MessageFns<ResourceTemplate> = {
           message.mimeType = reader.string();
           continue;
         }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.icons.push(Icon.decode(reader, reader.uint32()));
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -2707,6 +2894,7 @@ export const ResourceTemplate: MessageFns<ResourceTemplate> = {
         : isSet(object.mime_type)
         ? globalThis.String(object.mime_type)
         : "",
+      icons: globalThis.Array.isArray(object?.icons) ? object.icons.map((e: any) => Icon.fromJSON(e)) : [],
     };
   },
 
@@ -2724,6 +2912,9 @@ export const ResourceTemplate: MessageFns<ResourceTemplate> = {
     if (message.mimeType !== "") {
       obj.mimeType = message.mimeType;
     }
+    if (message.icons?.length) {
+      obj.icons = message.icons.map((e) => Icon.toJSON(e));
+    }
     return obj;
   },
 
@@ -2736,6 +2927,7 @@ export const ResourceTemplate: MessageFns<ResourceTemplate> = {
     message.name = object.name ?? "";
     message.description = object.description ?? "";
     message.mimeType = object.mimeType ?? "";
+    message.icons = object.icons?.map((e) => Icon.fromPartial(e)) || [];
     return message;
   },
 };
@@ -3029,7 +3221,7 @@ export const PromptArgument: MessageFns<PromptArgument> = {
 };
 
 function createBasePrompt(): Prompt {
-  return { name: "", description: "", arguments: [] };
+  return { name: "", description: "", arguments: [], icons: [] };
 }
 
 export const Prompt: MessageFns<Prompt> = {
@@ -3042,6 +3234,9 @@ export const Prompt: MessageFns<Prompt> = {
     }
     for (const v of message.arguments) {
       PromptArgument.encode(v!, writer.uint32(26).fork()).join();
+    }
+    for (const v of message.icons) {
+      Icon.encode(v!, writer.uint32(34).fork()).join();
     }
     return writer;
   },
@@ -3077,6 +3272,14 @@ export const Prompt: MessageFns<Prompt> = {
           message.arguments.push(PromptArgument.decode(reader, reader.uint32()));
           continue;
         }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.icons.push(Icon.decode(reader, reader.uint32()));
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -3093,6 +3296,7 @@ export const Prompt: MessageFns<Prompt> = {
       arguments: globalThis.Array.isArray(object?.arguments)
         ? object.arguments.map((e: any) => PromptArgument.fromJSON(e))
         : [],
+      icons: globalThis.Array.isArray(object?.icons) ? object.icons.map((e: any) => Icon.fromJSON(e)) : [],
     };
   },
 
@@ -3107,6 +3311,9 @@ export const Prompt: MessageFns<Prompt> = {
     if (message.arguments?.length) {
       obj.arguments = message.arguments.map((e) => PromptArgument.toJSON(e));
     }
+    if (message.icons?.length) {
+      obj.icons = message.icons.map((e) => Icon.toJSON(e));
+    }
     return obj;
   },
 
@@ -3118,6 +3325,7 @@ export const Prompt: MessageFns<Prompt> = {
     message.name = object.name ?? "";
     message.description = object.description ?? "";
     message.arguments = object.arguments?.map((e) => PromptArgument.fromPartial(e)) || [];
+    message.icons = object.icons?.map((e) => Icon.fromPartial(e)) || [];
     return message;
   },
 };

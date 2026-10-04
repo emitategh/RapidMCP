@@ -15,12 +15,26 @@ CACHE_SCOPE_PRIVATE: CacheScope
 CACHE_SCOPE_PUBLIC: CacheScope
 
 class Implementation(_message.Message):
-    __slots__ = ("name", "version")
+    __slots__ = ("name", "version", "icons")
     NAME_FIELD_NUMBER: _ClassVar[int]
     VERSION_FIELD_NUMBER: _ClassVar[int]
+    ICONS_FIELD_NUMBER: _ClassVar[int]
     name: str
     version: str
-    def __init__(self, name: _Optional[str] = ..., version: _Optional[str] = ...) -> None: ...
+    icons: _containers.RepeatedCompositeFieldContainer[Icon]
+    def __init__(self, name: _Optional[str] = ..., version: _Optional[str] = ..., icons: _Optional[_Iterable[_Union[Icon, _Mapping]]] = ...) -> None: ...
+
+class Icon(_message.Message):
+    __slots__ = ("src", "mime_type", "sizes", "theme")
+    SRC_FIELD_NUMBER: _ClassVar[int]
+    MIME_TYPE_FIELD_NUMBER: _ClassVar[int]
+    SIZES_FIELD_NUMBER: _ClassVar[int]
+    THEME_FIELD_NUMBER: _ClassVar[int]
+    src: str
+    mime_type: str
+    sizes: _containers.RepeatedScalarFieldContainer[str]
+    theme: str
+    def __init__(self, src: _Optional[str] = ..., mime_type: _Optional[str] = ..., sizes: _Optional[_Iterable[str]] = ..., theme: _Optional[str] = ...) -> None: ...
 
 class ElicitationCapability(_message.Message):
     __slots__ = ("form", "url")
@@ -159,18 +173,20 @@ class ToolAnnotations(_message.Message):
     def __init__(self, title: _Optional[str] = ..., read_only_hint: bool = ..., destructive_hint: bool = ..., idempotent_hint: bool = ..., open_world_hint: bool = ...) -> None: ...
 
 class Tool(_message.Message):
-    __slots__ = ("name", "description", "input_schema", "output_schema", "annotations")
+    __slots__ = ("name", "description", "input_schema", "output_schema", "annotations", "icons")
     NAME_FIELD_NUMBER: _ClassVar[int]
     DESCRIPTION_FIELD_NUMBER: _ClassVar[int]
     INPUT_SCHEMA_FIELD_NUMBER: _ClassVar[int]
     OUTPUT_SCHEMA_FIELD_NUMBER: _ClassVar[int]
     ANNOTATIONS_FIELD_NUMBER: _ClassVar[int]
+    ICONS_FIELD_NUMBER: _ClassVar[int]
     name: str
     description: str
     input_schema: str
     output_schema: str
     annotations: ToolAnnotations
-    def __init__(self, name: _Optional[str] = ..., description: _Optional[str] = ..., input_schema: _Optional[str] = ..., output_schema: _Optional[str] = ..., annotations: _Optional[_Union[ToolAnnotations, _Mapping]] = ...) -> None: ...
+    icons: _containers.RepeatedCompositeFieldContainer[Icon]
+    def __init__(self, name: _Optional[str] = ..., description: _Optional[str] = ..., input_schema: _Optional[str] = ..., output_schema: _Optional[str] = ..., annotations: _Optional[_Union[ToolAnnotations, _Mapping]] = ..., icons: _Optional[_Iterable[_Union[Icon, _Mapping]]] = ...) -> None: ...
 
 class ListToolsRequest(_message.Message):
     __slots__ = ("meta", "cursor")
@@ -193,16 +209,18 @@ class ListToolsResult(_message.Message):
     def __init__(self, meta: _Optional[_Union[ResultMeta, _Mapping]] = ..., tools: _Optional[_Iterable[_Union[Tool, _Mapping]]] = ..., next_cursor: _Optional[str] = ..., cache: _Optional[_Union[CacheHint, _Mapping]] = ...) -> None: ...
 
 class Resource(_message.Message):
-    __slots__ = ("uri", "name", "description", "mime_type")
+    __slots__ = ("uri", "name", "description", "mime_type", "icons")
     URI_FIELD_NUMBER: _ClassVar[int]
     NAME_FIELD_NUMBER: _ClassVar[int]
     DESCRIPTION_FIELD_NUMBER: _ClassVar[int]
     MIME_TYPE_FIELD_NUMBER: _ClassVar[int]
+    ICONS_FIELD_NUMBER: _ClassVar[int]
     uri: str
     name: str
     description: str
     mime_type: str
-    def __init__(self, uri: _Optional[str] = ..., name: _Optional[str] = ..., description: _Optional[str] = ..., mime_type: _Optional[str] = ...) -> None: ...
+    icons: _containers.RepeatedCompositeFieldContainer[Icon]
+    def __init__(self, uri: _Optional[str] = ..., name: _Optional[str] = ..., description: _Optional[str] = ..., mime_type: _Optional[str] = ..., icons: _Optional[_Iterable[_Union[Icon, _Mapping]]] = ...) -> None: ...
 
 class ListResourcesRequest(_message.Message):
     __slots__ = ("meta", "cursor")
@@ -225,16 +243,18 @@ class ListResourcesResult(_message.Message):
     def __init__(self, meta: _Optional[_Union[ResultMeta, _Mapping]] = ..., resources: _Optional[_Iterable[_Union[Resource, _Mapping]]] = ..., next_cursor: _Optional[str] = ..., cache: _Optional[_Union[CacheHint, _Mapping]] = ...) -> None: ...
 
 class ResourceTemplate(_message.Message):
-    __slots__ = ("uri_template", "name", "description", "mime_type")
+    __slots__ = ("uri_template", "name", "description", "mime_type", "icons")
     URI_TEMPLATE_FIELD_NUMBER: _ClassVar[int]
     NAME_FIELD_NUMBER: _ClassVar[int]
     DESCRIPTION_FIELD_NUMBER: _ClassVar[int]
     MIME_TYPE_FIELD_NUMBER: _ClassVar[int]
+    ICONS_FIELD_NUMBER: _ClassVar[int]
     uri_template: str
     name: str
     description: str
     mime_type: str
-    def __init__(self, uri_template: _Optional[str] = ..., name: _Optional[str] = ..., description: _Optional[str] = ..., mime_type: _Optional[str] = ...) -> None: ...
+    icons: _containers.RepeatedCompositeFieldContainer[Icon]
+    def __init__(self, uri_template: _Optional[str] = ..., name: _Optional[str] = ..., description: _Optional[str] = ..., mime_type: _Optional[str] = ..., icons: _Optional[_Iterable[_Union[Icon, _Mapping]]] = ...) -> None: ...
 
 class ListResourceTemplatesRequest(_message.Message):
     __slots__ = ("meta", "cursor")
@@ -267,14 +287,16 @@ class PromptArgument(_message.Message):
     def __init__(self, name: _Optional[str] = ..., description: _Optional[str] = ..., required: bool = ...) -> None: ...
 
 class Prompt(_message.Message):
-    __slots__ = ("name", "description", "arguments")
+    __slots__ = ("name", "description", "arguments", "icons")
     NAME_FIELD_NUMBER: _ClassVar[int]
     DESCRIPTION_FIELD_NUMBER: _ClassVar[int]
     ARGUMENTS_FIELD_NUMBER: _ClassVar[int]
+    ICONS_FIELD_NUMBER: _ClassVar[int]
     name: str
     description: str
     arguments: _containers.RepeatedCompositeFieldContainer[PromptArgument]
-    def __init__(self, name: _Optional[str] = ..., description: _Optional[str] = ..., arguments: _Optional[_Iterable[_Union[PromptArgument, _Mapping]]] = ...) -> None: ...
+    icons: _containers.RepeatedCompositeFieldContainer[Icon]
+    def __init__(self, name: _Optional[str] = ..., description: _Optional[str] = ..., arguments: _Optional[_Iterable[_Union[PromptArgument, _Mapping]]] = ..., icons: _Optional[_Iterable[_Union[Icon, _Mapping]]] = ...) -> None: ...
 
 class ListPromptsRequest(_message.Message):
     __slots__ = ("meta", "cursor")

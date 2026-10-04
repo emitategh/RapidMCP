@@ -31,3 +31,14 @@ def test_annotation_hints_can_be_left_unset():
 
     assert not unset.HasField("destructive_hint")
     assert explicit.HasField("destructive_hint")
+
+
+def test_listed_items_and_the_server_can_carry_icons():
+    from rapidmcp._generated import mcp_v2_pb2 as pb
+
+    icon = pb.Icon(
+        src="https://example.com/i.png", mime_type="image/png", sizes=["48x48"], theme="dark"
+    )
+
+    for message in (pb.Tool, pb.Resource, pb.ResourceTemplate, pb.Prompt, pb.Implementation):
+        assert list(message(icons=[icon]).icons) == [icon]

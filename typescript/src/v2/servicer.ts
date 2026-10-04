@@ -94,7 +94,7 @@ export class McpV2Servicer implements McpServiceImplementation {
   }
 
   private _resultMeta(): ResultMeta {
-    return { serverInfo: { name: this._opts.name, version: this._opts.version } };
+    return { serverInfo: { name: this._opts.name, version: this._opts.version, icons: [] } };
   }
 
   /** Reject a request whose metadata is missing or names a version we do not serve. */

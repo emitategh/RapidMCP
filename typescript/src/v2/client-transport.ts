@@ -90,7 +90,7 @@ export class V2Transport {
         elicitation: this._elicitationCapability(),
         extensions: {},
       },
-      clientInfo: { name: "rapidmcp-typescript", version: "0.3.0" },
+      clientInfo: { name: "rapidmcp-typescript", version: "0.3.0", icons: [] },
       progressToken:
         events && this._notifications.has("progress") ? `p${this._nextProgressToken++}` : undefined,
       logLevel: events && this._notifications.has("log") ? "debug" : undefined,

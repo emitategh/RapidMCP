@@ -22,6 +22,15 @@ service Mcp {
 message Implementation {
   string name    = 1;
   string version = 2;
+  repeated Icon icons = 3;
+}
+
+// A visual identifier for a tool, resource, prompt or implementation.
+message Icon {
+  string src             = 1;  // https: URL or data: URI
+  string mime_type       = 2;
+  repeated string sizes  = 3;  // e.g. "48x48", "any"
+  string theme           = 4;  // "light" | "dark" | ""
 }
 
 message ElicitationCapability {
@@ -103,6 +112,7 @@ message Tool {
   string input_schema         = 3;  // JSON Schema as JSON text
   string output_schema        = 4;  // JSON Schema as JSON text, empty = none
   ToolAnnotations annotations = 5;  // unset = no annotations
+  repeated Icon icons = 6;
 }
 
 message ListToolsRequest { RequestMeta meta = 1; string cursor = 2; }
@@ -121,6 +131,7 @@ message Resource {
   string name        = 2;
   string description = 3;
   string mime_type   = 4;
+  repeated Icon icons = 5;
 }
 
 message ListResourcesRequest { RequestMeta meta = 1; string cursor = 2; }
@@ -137,6 +148,7 @@ message ResourceTemplate {
   string name         = 2;
   string description  = 3;
   string mime_type    = 4;
+  repeated Icon icons = 5;
 }
 
 message ListResourceTemplatesRequest { RequestMeta meta = 1; string cursor = 2; }
@@ -160,6 +172,7 @@ message Prompt {
   string name                       = 1;
   string description                = 2;
   repeated PromptArgument arguments = 3;
+  repeated Icon icons = 4;
 }
 
 message ListPromptsRequest { RequestMeta meta = 1; string cursor = 2; }
