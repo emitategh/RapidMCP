@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import time
@@ -65,6 +66,9 @@ class Client:
             raise ValueError(f"mode must be 'legacy', 'modern' or 'auto', not {mode!r}")
         self._mode = mode
         self._v2: _V2Transport | None = None
+        self._subscribed_uris: list[str] = []
+        self._listen_task: asyncio.Task | None = None
+        self._listen_lock = asyncio.Lock()
         self._target = target
         self._request_timeout = request_timeout
         self._metadata = [("authorization", f"Bearer {token}")] if token is not None else []
@@ -151,6 +155,7 @@ class Client:
                 return False
             raise
         self._v2 = transport
+        await self._refresh_listen()
         return True
 
     async def _connect_v1(self) -> None:
@@ -220,8 +225,33 @@ class Client:
         if self._v2 is not None:
             raise McpError(
                 METHOD_NOT_FOUND,
-                f"{operation} is not available on the v2 protocol yet; use mode='legacy'",
+                f"{operation} is not part of the v2 protocol; use mode='legacy'",
             )
+
+    async def _stop_listening(self) -> None:
+        task, self._listen_task = self._listen_task, None
+        if task is not None:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+    async def _refresh_listen(self) -> None:
+        """(Re)open the v2 subscription so it matches the handlers and URIs registered now."""
+        if self._v2 is None:
+            return
+        async with self._listen_lock:
+            await self._stop_listening()
+            wanted = {
+                kind: self._notifications.has(kind)
+                for kind in ("tools_list_changed", "prompts_list_changed", "resources_list_changed")
+            }
+            if not any(wanted.values()) and not self._subscribed_uris:
+                return
+            ready = asyncio.Event()
+            self._listen_task = asyncio.create_task(
+                self._v2.listen(**wanted, uris=list(self._subscribed_uris), ready=ready)
+            )
+            await asyncio.wait_for(ready.wait(), timeout=self._request_timeout)
 
     async def _reader_loop(self) -> None:
         logger.debug("reader loop started for %s", self._target)
@@ -388,7 +418,11 @@ class Client:
 
     async def subscribe_resource(self, uri: str) -> None:
         """Subscribe to updates for a specific resource URI."""
-        self._v1_only("subscribe_resource")
+        if self._v2 is not None:
+            if uri not in self._subscribed_uris:
+                self._subscribed_uris.append(uri)
+            await self._refresh_listen()
+            return
         await self._send(
             mcp_pb2.ClientEnvelope(
                 request_id=0,
@@ -451,6 +485,12 @@ class Client:
 
     def on_notification(self, notification_type: str, handler) -> None:
         self._notifications.register(notification_type, handler)
+        if self._v2 is not None:
+            # Already connected over v2: widen the subscription in the background.
+            with contextlib.suppress(RuntimeError):  # no running loop: nothing to refresh
+                task = asyncio.get_running_loop().create_task(self._refresh_listen())
+                self._background_tasks.add(task)
+                task.add_done_callback(self._background_tasks.discard)
 
     async def ping(self) -> bool:
         """Ping the server. Returns True on success, raises McpError on failure."""
@@ -489,6 +529,7 @@ class Client:
 
     async def close(self) -> None:
         logger.debug("closing connection to %s", self._target)
+        await self._stop_listening()
         # Signal outbound iterator to stop
         if self._write_queue is not None:
             await self._write_queue.put(None)

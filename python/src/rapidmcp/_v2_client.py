@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import itertools
 import json
 import logging
@@ -148,11 +149,53 @@ class _V2Transport:
         )
         return _convert_complete_result(result)
 
-    async def _notify(self, kind: str, payload: dict) -> None:
+    async def _dispatch(self, kind: str, payload: str) -> None:
         try:
-            await self._notifications.dispatch(kind, json.dumps(payload))
+            await self._notifications.dispatch(kind, payload)
         except Exception:
             logger.exception("Notification handler for '%s' raised", kind)
+
+    async def _notify(self, kind: str, payload: dict) -> None:
+        await self._dispatch(kind, json.dumps(payload))
+
+    async def listen(
+        self,
+        *,
+        tools_list_changed: bool,
+        prompts_list_changed: bool,
+        resources_list_changed: bool,
+        uris: list[str],
+        ready: asyncio.Event,
+    ) -> None:
+        """Hold a Listen stream open, handing its notifications to the registered handlers.
+
+        Sets *ready* once the server has acknowledged the subscription (or the
+        stream has ended, so a waiter never hangs). Runs until cancelled.
+        """
+        request = pb.ListenRequest(
+            meta=self._meta(),
+            notifications=pb.NotificationFilter(
+                tools_list_changed=tools_list_changed,
+                prompts_list_changed=prompts_list_changed,
+                resources_list_changed=resources_list_changed,
+                resource_subscriptions=uris,
+            ),
+        )
+        call = self._stub.Listen(request, metadata=self._metadata)  # long-lived: no deadline
+        try:
+            async for event in call:
+                kind = event.WhichOneof("event")
+                if kind == "acknowledged":
+                    ready.set()
+                elif kind == "resource_updated":
+                    await self._notify("resource_updated", {"uri": event.resource_updated.uri})
+                elif kind is not None:
+                    await self._dispatch(kind, "")
+        except aio.AioRpcError as exc:
+            logger.warning("subscription stream ended: %s", exc.code())
+        finally:
+            call.cancel()
+            ready.set()
 
     async def _stream(self, method, request, timeout: float | None = None):
         """Run a streaming RPC to its terminal event, feeding progress and log handlers."""
