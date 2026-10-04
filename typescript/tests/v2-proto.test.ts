@@ -9,11 +9,11 @@ describe("v2 generated stubs", () => {
       "complete",
       "discover",
       "getPrompt",
-      "listen",
       "listPrompts",
       "listResourceTemplates",
       "listResources",
       "listTools",
+      "listen",
       "readResource",
     ]);
     expect(McpDefinition.methods.callTool.responseStream).toBe(true);

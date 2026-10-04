@@ -353,3 +353,21 @@ class _McpV2Servicer(mcp_v2_pb2_grpc.McpServicer):
                 ],
             )
         )
+
+    async def Listen(self, request, context):
+        await self._check_meta(request, context)
+        wanted = request.notifications
+        listener = self._server._v2_listeners.add(wanted)
+        try:
+            yield pb.ListenEvent(acknowledged=wanted)
+            for uri in wanted.resource_subscriptions:
+                for handler in self._server._subscribe_handlers:
+                    try:
+                        await _invoke(handler, uri)
+                    except Exception:
+                        logger.exception("Subscribe handler for '%s' raised", uri)
+            while True:
+                yield await listener.queue.get()
+        finally:
+            # Cancelled by the client, or the connection dropped: forget the listener.
+            self._server._v2_listeners.remove(listener)

@@ -15,6 +15,7 @@ from grpc import aio as grpc_aio
 from rapidmcp._generated import mcp_pb2, mcp_pb2_grpc, mcp_v2_pb2_grpc
 from rapidmcp._servicer import _McpServicer
 from rapidmcp._utils import _prefix_resource_uri
+from rapidmcp._v2_listen import _Listeners
 from rapidmcp._v2_servicer import _McpV2Servicer
 from rapidmcp.auth import TLSConfig, _AuthInterceptor, _build_server_credentials
 from rapidmcp.context import Context
@@ -63,6 +64,7 @@ class RapidMCP:
         self._resource_manager = ResourceManager()
         self._prompt_manager = PromptManager()
         self._session_queues: list[asyncio.Queue] = []
+        self._v2_listeners = _Listeners()
         self._client_notification_handlers: dict[str, list[Callable]] = {}
         self._subscribe_handlers: list[Callable] = []
 
@@ -231,6 +233,7 @@ class RapidMCP:
                 type=mcp_pb2.ServerNotification.TOOLS_LIST_CHANGED,
             )
         )
+        self._v2_listeners.tools_list_changed()
 
     def notify_resources_list_changed(self) -> None:
         self._broadcast(
@@ -238,6 +241,7 @@ class RapidMCP:
                 type=mcp_pb2.ServerNotification.RESOURCES_LIST_CHANGED,
             )
         )
+        self._v2_listeners.resources_list_changed()
 
     def notify_resource_updated(self, uri: str) -> None:
         self._broadcast(
@@ -246,6 +250,7 @@ class RapidMCP:
                 payload=json.dumps({"uri": uri}),
             )
         )
+        self._v2_listeners.resource_updated(uri)
 
     def notify_prompts_list_changed(self) -> None:
         self._broadcast(
@@ -253,6 +258,7 @@ class RapidMCP:
                 type=mcp_pb2.ServerNotification.PROMPTS_LIST_CHANGED,
             )
         )
+        self._v2_listeners.prompts_list_changed()
 
     async def _call_tool_with_dict(
         self,

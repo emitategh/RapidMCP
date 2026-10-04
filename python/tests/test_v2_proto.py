@@ -12,11 +12,11 @@ def test_v2_service_has_the_expected_methods():
         "Complete",
         "Discover",
         "GetPrompt",
-        "Listen",
         "ListPrompts",
         "ListResourceTemplates",
         "ListResources",
         "ListTools",
+        "Listen",
         "ReadResource",
     ]
     streaming = {m.name for m in service.methods if m.server_streaming}
