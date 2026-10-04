@@ -18,6 +18,7 @@ import { PromptManager } from "./prompts/prompt-manager.js";
 import { McpServicer } from "./servicer.js";
 import { McpDefinition as McpV2Definition } from "../generated/mcp_v2.js";
 import { McpV2Servicer } from "./v2/servicer.js";
+import { Listeners } from "./v2/listeners.js";
 import { AsyncQueue } from "./session.js";
 import {
   authMiddleware,
@@ -68,6 +69,7 @@ export class RapidMCP {
 
   private _server: Server | null = null;
   private _sessions = new Set<AsyncQueue<DeepPartial<ServerEnvelope> | null>>();
+  private _listeners = new Listeners();
 
   constructor(opts: RapidMCPOptions) {
     this._name = opts.name;
@@ -201,6 +203,8 @@ export class RapidMCP {
       stateSecret: this._stateSecret,
       stateSecretConfigured: this._stateSecretConfigured,
       authEnabled: this._auth !== undefined,
+      listeners: this._listeners,
+      subscribeHandlers: this._subscribeHandlers,
     });
 
     this._server = createServer();
@@ -226,18 +230,22 @@ export class RapidMCP {
   // ── Broadcast notifications ───────────────────────────────
 
   notifyToolsListChanged(): void {
+    this._listeners.toolsListChanged();
     this._broadcast(ServerNotification_Type.TOOLS_LIST_CHANGED, "");
   }
 
   notifyResourcesListChanged(): void {
+    this._listeners.resourcesListChanged();
     this._broadcast(ServerNotification_Type.RESOURCES_LIST_CHANGED, "");
   }
 
   notifyResourceUpdated(uri: string): void {
+    this._listeners.resourceUpdated(uri);
     this._broadcast(ServerNotification_Type.RESOURCE_UPDATED, JSON.stringify({ uri }));
   }
 
   notifyPromptsListChanged(): void {
+    this._listeners.promptsListChanged();
     this._broadcast(ServerNotification_Type.PROMPTS_LIST_CHANGED, "");
   }
 

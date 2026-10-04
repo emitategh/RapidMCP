@@ -14,6 +14,9 @@ import {
   type GetPromptEvent,
   type GetPromptRequest,
   type InputRequest,
+  type ListenEvent,
+  type ListenRequest,
+  type NotificationFilter,
   type ReadResourceEvent,
   type ReadResourceRequest,
   type CompleteRequest,
@@ -37,6 +40,7 @@ import { paginate, parseToolArguments } from "../_utils.js";
 import { Middleware, type CallToolResult, type ToolCallContext } from "../middleware.js";
 import { AsyncQueue } from "../session.js";
 import { LOG_LEVELS, NeedsInput, V2Context } from "./context.js";
+import type { Listeners } from "./listeners.js";
 import { operationDigest, principalDigest, seal, unseal, type Answers } from "./state.js";
 import { ErrorCode, McpError } from "../errors.js";
 import type { PromptManager } from "../prompts/prompt-manager.js";
@@ -60,6 +64,10 @@ export interface McpV2ServicerOptions {
   stateSecretConfigured: boolean;
   /** Whether the server checks credentials; if so, request_state is bound to them. */
   authEnabled: boolean;
+  /** Open Listen streams; the server's notify methods publish through it. */
+  listeners: Listeners;
+  /** Called with each uri a Listen request subscribes to. */
+  subscribeHandlers: Array<(uri: string) => void | Promise<void>>;
 }
 
 const NO_CACHE: CacheHint = { ttlMs: 0n, scope: CacheScope.CACHE_SCOPE_PRIVATE };
@@ -387,5 +395,46 @@ export class McpV2Servicer implements McpServiceImplementation {
       throw this._failure(err, `Prompt handler '${name}' failed`, context);
     }
     yield { event: { $case: "complete", complete: { meta: this._resultMeta(), messages } } };
+  }
+
+  async *listen(
+    request: ListenRequest,
+    context: CallContext,
+  ): AsyncGenerator<DeepPartial<ListenEvent>> {
+    this._checkMeta(request.meta, context);
+    const wanted: NotificationFilter = request.notifications ?? {
+      toolsListChanged: false,
+      promptsListChanged: false,
+      resourcesListChanged: false,
+      resourceSubscriptions: [],
+    };
+
+    const END = Symbol("end");
+    const queue = new AsyncQueue<DeepPartial<ListenEvent> | typeof END>();
+    const listener = this._opts.listeners.add(wanted, (event) => queue.enqueue(event));
+    const stop = () => queue.enqueue(END);
+    context.signal.addEventListener("abort", stop, { once: true });
+
+    try {
+      yield { event: { $case: "acknowledged", acknowledged: wanted } };
+      for (const uri of wanted.resourceSubscriptions) {
+        for (const handler of this._opts.subscribeHandlers) {
+          try {
+            await handler(uri);
+          } catch (err) {
+            console.error(`[rapidmcp] resource subscribe handler failed:`, err);
+          }
+        }
+      }
+      for (;;) {
+        const item = await queue.dequeue();
+        if (item === END) return;
+        yield item;
+      }
+    } finally {
+      // Cancelled by the client, or the connection dropped: forget the listener.
+      context.signal.removeEventListener("abort", stop);
+      this._opts.listeners.remove(listener);
+    }
   }
 }
